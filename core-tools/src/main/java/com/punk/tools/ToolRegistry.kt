@@ -678,7 +678,8 @@ object ToolRegistry {
                 }
             }
             "shell_exec" -> {
-                val cmd = (params["cmd"] as? JsonPrimitive)?.content ?: ""
+                val cmd = (params["cmd"] as? JsonPrimitive)?.content
+                    ?: (params["command"] as? JsonPrimitive)?.content ?: ""
                 val t = (params["timeoutMs"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 15000L
                 val r = AxShell.exec(cmd, t)
                 buildJsonObject {
