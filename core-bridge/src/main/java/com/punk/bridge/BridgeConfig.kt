@@ -4,15 +4,17 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class BridgeConfig(
-    val host: String = "100.64.0.1",
+    val host: String = "192.168.15.148",
     val port: Int = 8765,
     val token: String = "",
     val useTls: Boolean = false,
+    val certificateFingerprint: String = "",
+    val deviceId: String = "",
     val reconnectBaseMs: Long = 1000L,
     val reconnectMaxMs: Long = 30000L
 ) {
     fun wsUrl(): String {
-        val scheme = if (useTls) "wss" else "ws"
-        return "${scheme}://${host}:${port}/punk-bridge"
+        return "${if (useTls) "wss" else "ws"}://${host}:${port}/punk-bridge"
     }
+    fun httpUrl(): String = "${if (useTls) "https" else "http"}://$host:$port"
 }

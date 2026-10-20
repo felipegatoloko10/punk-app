@@ -6,65 +6,51 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import java.util.UUID
 import kotlin.coroutines.resume
 
 object TtsEngine {
-
     private var tts: TextToSpeech? = null
-    private var isInitialized = false
-
-    private suspend fun getEngine(ctx: Context): TextToSpeech = withContext(Dispatchers.Main) {
-        if (tts != null && isInitialized) return@withContext tts!!
-
-        suspendCancellableCoroutine { cont ->
-            tts = TextToSpeech(ctx.applicationContext) { status ->
-                if (status == TextToSpeech.SUCCESS) {
-                    isInitialized = true
-                    try {
-                        tts?.language = Locale("pt", "BR")
-                    } catch (_: Exception) {}
-                    if (cont.isActive) cont.resume(tts!!)
-                } else {
-                    isInitialized = false
-                    if (cont.isActive) cont.resume(tts!!)
+    private var ready = false
+    private val mutex = Mutex()
+    private suspend fun getEngine(ctx: Context): TextToSpeech? = withContext(Dispatchers.Main.immediate) {
+        if (tts != null && ready) return@withContext tts
+        tts?.shutdown()
+        suspendCancellableCoroutine { continuation ->
+            tts = TextToSpeech(ctx.applicationContext) { result ->
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    val language = if (result == TextToSpeech.SUCCESS) tts?.setLanguage(Locale("pt","BR")) else null
+                    ready = language != null && language >= TextToSpeech.LANG_AVAILABLE
+                    if (continuation.isActive) continuation.resume(if (ready) tts else null)
                 }
             }
+            continuation.invokeOnCancellation { stop() }
         }
     }
-
-    suspend fun speak(ctx: Context, text: String, pitch: Float = 1.0f, rate: Float = 1.0f): Boolean {
-        val engine = getEngine(ctx)
-        if (!isInitialized) return false
-
-        return suspendCancellableCoroutine { cont ->
-            val uttId = UUID.randomUUID().toString()
-            engine.setPitch(pitch.coerceIn(0.5f, 2.0f))
-            engine.setSpeechRate(rate.coerceIn(0.5f, 2.0f))
-
-            engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {}
-                override fun onDone(utteranceId: String?) {
-                    if (utteranceId == uttId && cont.isActive) cont.resume(true)
-                }
-                override fun onError(utteranceId: String?) {
-                    if (utteranceId == uttId && cont.isActive) cont.resume(false)
-                }
-            })
-
-            val params = Bundle()
-            val res = engine.speak(text, TextToSpeech.QUEUE_ADD, params, uttId)
-            if (res != TextToSpeech.SUCCESS && cont.isActive) {
-                cont.resume(false)
-            }
-        }
-    }
-
-    fun stop() {
+    suspend fun speak(ctx: Context, text: String, pitch: Float = 1f, rate: Float = 1f): Boolean {
+        if (!mutex.tryLock()) return false
         try {
-            tts?.stop()
-        } catch (_: Exception) {}
+            return withTimeoutOrNull(120000) {
+                val engine = withTimeoutOrNull(5000) { getEngine(ctx) } ?: return@withTimeoutOrNull false
+                withContext(Dispatchers.Main.immediate) {
+                    suspendCancellableCoroutine { continuation ->
+                        val id = UUID.randomUUID().toString()
+                        engine.setPitch(pitch.coerceIn(.5f,2f)); engine.setSpeechRate(rate.coerceIn(.5f,2f))
+                        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                            override fun onStart(utteranceId: String?) {}
+                            override fun onDone(utteranceId: String?) { if (utteranceId == id && continuation.isActive) continuation.resume(true) }
+                            @Deprecated("Legacy callback") override fun onError(utteranceId: String?) { if (utteranceId == id && continuation.isActive) continuation.resume(false) }
+                        })
+                        continuation.invokeOnCancellation { stop() }
+                        if (engine.speak(text,TextToSpeech.QUEUE_FLUSH,Bundle(),id) != TextToSpeech.SUCCESS && continuation.isActive) continuation.resume(false)
+                    }
+                }
+            } ?: false
+        } finally { mutex.unlock() }
     }
+    fun stop() { android.os.Handler(android.os.Looper.getMainLooper()).post { tts?.stop() } }
 }

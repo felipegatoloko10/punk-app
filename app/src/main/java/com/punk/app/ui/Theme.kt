@@ -10,78 +10,63 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// Cyberpunk AMOLED palette - Sir Felipe spec
-val PunkAmoledBg      = Color(0xFF050508) // fundo ultra-escuro AMOLED
-val PunkSurface       = Color(0xFF0E0E14)
-val PunkSurfaceVar    = Color(0xFF1A1A24)
-val PunkSurfaceHigh   = Color(0xFF1E1E2E)
-val PunkNeonCyan      = Color(0xFF00F0FF) // ciano neon
-val PunkNeonMagenta   = Color(0xFFFF003C) // magenta/pink neon
-val PunkNeonGreen     = Color(0xFF00FF66) // verde matrix
-val PunkNeonPurple    = Color(0xFF9D00FF)
-val PunkTextPrimary   = Color(0xFFE6F1FF)
-val PunkTextSecondary = Color(0xFF8A9AB5)
-val PunkTextMuted     = Color(0xFF5A6A85)
-val PunkBorderCyan    = Color(0x3300F0FF)
-val PunkBorderMagenta = Color(0x33FF003C)
-val PunkBorderGreen   = Color(0x3300FF66)
-
-private val PunkDarkScheme = darkColorScheme(
-    primary = PunkNeonCyan,
-    onPrimary = Color.Black,
-    primaryContainer = Color(0xFF00373A),
-    onPrimaryContainer = PunkNeonCyan,
-    secondary = PunkNeonMagenta,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFF3A0014),
-    onSecondaryContainer = PunkNeonMagenta,
-    tertiary = PunkNeonGreen,
-    onTertiary = Color.Black,
-    tertiaryContainer = Color(0xFF003314),
-    onTertiaryContainer = PunkNeonGreen,
-    error = PunkNeonMagenta,
-    onError = Color.White,
-    background = PunkAmoledBg,
-    onBackground = PunkTextPrimary,
-    surface = PunkSurface,
-    onSurface = PunkTextPrimary,
-    surfaceVariant = PunkSurfaceVar,
-    onSurfaceVariant = PunkTextSecondary,
-    outline = Color(0xFF2A3548),
-    outlineVariant = Color(0xFF1E2A3A),
-    scrim = Color.Black,
-    surfaceTint = PunkNeonCyan
-)
-
-// Monospaced for logs / terminal
+val PunkAmoledBg = Color(0xFF080B10)
+val PunkSurface = Color(0xFF11161E)
+val PunkSurfaceVar = Color(0xFF1A212C)
+val PunkSurfaceHigh = Color(0xFF222C39)
+val PunkNeonCyan = Color(0xFF82DBE8)
+val PunkNeonMagenta = Color(0xFFFF999D)
+val PunkNeonGreen = Color(0xFF91D4B3)
+val PunkWarning = Color(0xFFE9C78E)
+val PunkNeonPurple = Color(0xFFB8B1E8)
+val PunkTextPrimary = Color(0xFFEAF0F6)
+val PunkTextSecondary = Color(0xFFA4AFBE)
+val PunkTextMuted = Color(0xFF8B98A9)
+val PunkBorderCyan = Color(0xFF2A424D)
+val PunkBorderMagenta = Color(0xFF57393F)
+val PunkBorderGreen = Color(0xFF2D4B40)
 val PunkMonoFamily = FontFamily.Monospace
 
-private val PunkTypography = Typography(
-    displayLarge  = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Black, fontSize = 28.sp, letterSpacing = 1.2.sp, color = PunkTextPrimary),
-    titleLarge    = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 20.sp, letterSpacing = 0.8.sp, color = PunkTextPrimary),
-    titleMedium   = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Bold, fontSize = 14.sp, letterSpacing = 1.5.sp, color = PunkNeonCyan),
-    labelLarge    = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, letterSpacing = 1.2.sp, color = PunkTextPrimary),
-    labelMedium   = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Medium, fontSize = 11.sp, letterSpacing = 1.0.sp, color = PunkTextSecondary),
-    bodyLarge     = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp, color = PunkTextPrimary),
-    bodyMedium    = TextStyle(fontFamily = FontFamily.Default, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp, color = PunkTextSecondary),
-    bodySmall     = TextStyle(fontFamily = PunkMonoFamily, fontWeight = FontWeight.Normal, fontSize = 11.sp, lineHeight = 15.sp, color = PunkTextMuted),
-    labelSmall    = TextStyle(fontFamily = PunkMonoFamily, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.0.sp, color = PunkNeonCyan)
+private val PunkColors = darkColorScheme(
+    primary = PunkNeonCyan, onPrimary = Color(0xFF09272E),
+    primaryContainer = Color(0xFF1B3741), onPrimaryContainer = Color(0xFFC5F3F9),
+    secondary = Color(0xFFB6C8DC), onSecondary = Color(0xFF14202E),
+    secondaryContainer = Color(0xFF263342), onSecondaryContainer = PunkTextPrimary,
+    tertiary = PunkNeonGreen, onTertiary = Color(0xFF102C21),
+    error = PunkNeonMagenta, onError = Color(0xFF3B1118),
+    errorContainer = Color(0xFF362128), onErrorContainer = Color(0xFFFFDADC),
+    background = PunkAmoledBg, onBackground = PunkTextPrimary,
+    surface = PunkSurface, onSurface = PunkTextPrimary,
+    surfaceVariant = PunkSurfaceVar, onSurfaceVariant = PunkTextSecondary,
+    outline = Color(0xFF677587), outlineVariant = Color(0xFF293341),
+    surfaceTint = PunkNeonCyan, scrim = Color.Black
 )
 
-private val PunkShapes = Shapes(
-    extraSmall = RoundedCornerShape(4.dp),
-    small      = RoundedCornerShape(8.dp),
-    medium     = RoundedCornerShape(12.dp),
-    large      = RoundedCornerShape(16.dp),
-    extraLarge = RoundedCornerShape(20.dp)
+private val PunkTypography = Typography(
+    displaySmall = TextStyle(fontSize = 36.sp, lineHeight = 42.sp, fontWeight = FontWeight.Medium, letterSpacing = (-1).sp),
+    headlineLarge = TextStyle(fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Medium, letterSpacing = (-0.7).sp),
+    headlineMedium = TextStyle(fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Medium, letterSpacing = (-0.5).sp),
+    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium),
+    titleMedium = TextStyle(fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall = TextStyle(fontSize = 15.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 25.sp),
+    bodyMedium = TextStyle(fontSize = 16.sp, lineHeight = 24.sp),
+    bodySmall = TextStyle(fontSize = 14.sp, lineHeight = 21.sp),
+    labelLarge = TextStyle(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+    labelMedium = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium),
+    labelSmall = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium)
 )
 
 @Composable
 fun PunkTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = PunkDarkScheme,
+        colorScheme = PunkColors,
         typography = PunkTypography,
-        shapes = PunkShapes,
+        shapes = Shapes(
+            extraSmall = RoundedCornerShape(8.dp), small = RoundedCornerShape(12.dp),
+            medium = RoundedCornerShape(18.dp), large = RoundedCornerShape(24.dp),
+            extraLarge = RoundedCornerShape(30.dp)
+        ),
         content = content
     )
 }

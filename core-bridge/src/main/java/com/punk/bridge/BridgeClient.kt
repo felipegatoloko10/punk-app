@@ -1,132 +1,140 @@
 package com.punk.bridge
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
+import android.content.Context
+import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
+import kotlinx.serialization.json.*
+import okhttp3.*
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
 class BridgeClient(
+    private val context: Context,
     private val config: BridgeConfig,
     private val scope: CoroutineScope,
     private val onState: (BridgeState) -> Unit,
     private val onMessage: (BridgeMessage) -> Unit,
-    private val toolExecutor: (suspend (tool: String, params: JsonObject, callId: String) -> ToolResult)? = null
+    private val toolExecutor: (suspend (tool: String, params: JsonObject, callId: String) -> ToolResult)? = null,
+    private val catalog: JsonArray = JsonArray(emptyList())
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private var ws: WebSocket? = null
-    private var closed = false
+    @Volatile private var closed = false
+    @Volatile private var authenticated = false
     private var attempt = 0
-
-    private val client = OkHttpClient.Builder()
-        .pingInterval(20, TimeUnit.SECONDS)
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.SECONDS)
-        .build()
+    private var reconnectJob: Job? = null
+    private var handshakeJob: Job? = null
+    private val jobs = ConcurrentHashMap<String, Job>()
+    private val results = ConcurrentHashMap<String, ToolResult>()
+    private val calls = context.getSharedPreferences("punk_executed_calls_v3", Context.MODE_PRIVATE)
+    private val client = BridgeHttp.client(config).newBuilder().pingInterval(20, TimeUnit.SECONDS).readTimeout(0, TimeUnit.SECONDS).build()
 
     fun connect() {
         if (closed) return
+        if (config.token.isBlank() || config.deviceId.isBlank() || !config.useTls) {
+            onState(BridgeState.Failed("Faça o pareamento seguro com o PC")); return
+        }
+        authenticated = false
         onState(BridgeState.Connecting)
-        val req = Request.Builder().url(config.wsUrl()).build()
-        val builder = req.newBuilder()
-        if (config.token.isNotEmpty()) builder.header("Authorization", "Bearer ${config.token}")
-        ws = client.newWebSocket(builder.build(), Listener())
+        ws = client.newWebSocket(Request.Builder().url(config.wsUrl()).header("Authorization", "Bearer ${config.token}")
+            .header("X-Punk-Device", config.deviceId).build(), Listener())
     }
-
-    fun send(type: String, payload: JsonElement? = null) {
-        val msg = BridgeMessage(id = UUID.randomUUID().toString(), type = type, payload = payload)
-        val text = json.encodeToString(msg)
-        ws?.send(text)
+    fun send(type: String, payload: JsonElement? = null): Boolean {
+        if (!authenticated && type != BridgeTypes.HELLO && type != BridgeTypes.PONG) return false
+        return ws?.send(json.encodeToString(BridgeMessage(UUID.randomUUID().toString(), type, payload))) ?: false
     }
-
+    fun cancelTools(callIds: Set<String>? = null, acknowledge: Boolean = true) {
+        val targets=jobs.entries.filter { callIds == null || it.key in callIds }.associate { it.key to it.value }
+        val ids=callIds?.toList() ?: targets.keys.toList()
+        targets.values.forEach { it.cancel() }
+        ControlPolicy.cancelAll()
+        BridgeService.stopLocalTools?.invoke()
+        if (!acknowledge) return
+        scope.launch {
+            val stopped=CancellationBarrier.stop(targets.values.toList(), { BridgeService.stopLocalTools?.invoke() }, {
+                BridgeService.awaitLocalToolsIdle?.invoke() ?: true
+            })
+            send(if(stopped) "cancel_ack" else "cancel_pending", buildJsonObject { put("callIds",JsonArray(ids.map(::JsonPrimitive))) })
+        }
+    }
     fun close() {
-        closed = true
-        try { ws?.close(1000, "bye") } catch (_: Exception) {}
-        client.dispatcher.executorService.shutdown()
+        closed = true; authenticated = false
+        reconnectJob?.cancel(); handshakeJob?.cancel(); cancelTools(acknowledge=false)
+        ws?.close(1000, "Encerrado")
+        client.connectionPool.evictAll(); client.dispatcher.executorService.shutdown()
+        onState(BridgeState.Disconnected)
     }
-
     private inner class Listener : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            attempt = 0
-            onState(BridgeState.Connected)
-            val payload = buildJsonObject {
-                put("client", "punk-android")
-                put("version", "2.0.0")
-                put("token", config.token)
-            }
-            send(BridgeTypes.HELLO, payload)
+            if (closed) { webSocket.close(1000, "Encerrado"); return }
+            send(BridgeTypes.HELLO, buildJsonObject {
+                put("client", "punk-android"); put("version", "3.0.0"); put("protocolVersion", 3)
+                put("deviceId", config.deviceId); put("lastSeq", BridgePrefs.lastSeq(context)); put("tools", catalog)
+            })
+            handshakeJob = scope.launch { delay(10_000); if (!authenticated) { onState(BridgeState.Failed("O PC não confirmou o pareamento")); webSocket.cancel() } }
         }
-
         override fun onMessage(webSocket: WebSocket, text: String) {
-            try {
-                val msg = json.decodeFromString<BridgeMessage>(text)
-                when (msg.type) {
-                    BridgeTypes.PING -> send(BridgeTypes.PONG, null)
-                    BridgeTypes.TOOL_CALL -> {
-                        scope.launch {
-                            try {
-                                val payloadObj = msg.payload as? JsonObject
-                                val tool = payloadObj?.get("tool")?.let { (it as? JsonPrimitive)?.content } ?: ""
-                                val params = (payloadObj?.get("params") as? JsonObject) ?: JsonObject(emptyMap())
-                                val callId = payloadObj?.get("callId")?.let { (it as? JsonPrimitive)?.content } ?: msg.id
-
-                                val result = toolExecutor?.invoke(tool, params, callId)
-                                    ?: ToolResult(callId = callId, ok = false, error = "Nenhum executor de ferramentas registrado")
-
-                                val resPayload = json.encodeToJsonElement(ToolResult.serializer(), result)
-                                send(BridgeTypes.TOOL_RESULT, resPayload)
-                            } catch (e: Exception) {
-                                val errResult = ToolResult(callId = msg.id, ok = false, error = e.message ?: "Erro ao executar tool")
-                                val resPayload = json.encodeToJsonElement(ToolResult.serializer(), errResult)
-                                send(BridgeTypes.TOOL_RESULT, resPayload)
-                            }
-                        }
-                    }
-                    else -> {
-                        onMessage(msg)
-                    }
+            val msg = runCatching { json.decodeFromString<BridgeMessage>(text) }.getOrNull() ?: return
+            val p = msg.payload as? JsonObject ?: JsonObject(emptyMap())
+            if (msg.type == BridgeTypes.HELLO_ACK) {
+                if (p["authenticated"]?.jsonPrimitive?.booleanOrNull != true) {
+                    onState(BridgeState.Failed("Bridge incompatível ou acesso recusado")); closed = true; webSocket.close(1008,"Autenticação necessária"); return
                 }
-            } catch (_: Exception) {}
+                authenticated = true; attempt = 0; handshakeJob?.cancel()
+                onState(BridgeState.Connected); onMessage(msg); return
+            }
+            if (!authenticated) return
+            when (msg.type) {
+                BridgeTypes.PING -> send(BridgeTypes.PONG)
+                "cancel_tools" -> { cancelTools((p["callIds"] as? JsonArray)?.map { it.jsonPrimitive.content }?.toSet()); BridgeService.stopLocalTools?.invoke() }
+                BridgeTypes.TOOL_CALL -> {
+                    val callId = p["callId"]?.jsonPrimitive?.content ?: msg.id
+                    val tool = p["tool"]?.jsonPrimitive?.content ?: ""
+                    val params = p["params"] as? JsonObject ?: JsonObject(emptyMap())
+                    if(p["supervised"]?.jsonPrimitive?.booleanOrNull == true) ControlPolicy.applyMode(true)
+                    results[callId]?.let { sendResult(it); return }
+                    if (jobs.containsKey(callId)) return
+                    // Persist before executing: a reconnect/process restart must never repeat an uncertain action.
+                    if (calls.contains(callId)) { sendResult(ToolResult(callId,false,error="Chamada já recebida. Consulte o resultado antes de repetir.")); return }
+                    if(calls.all.size>2000) {
+                        calls.all.entries.sortedBy { (it.value as? Long) ?: 0L }.take(200).forEach { calls.edit().remove(it.key).apply() }
+                    }
+                    if(!calls.edit().putLong(callId, System.currentTimeMillis()).commit()) { sendResult(ToolResult(callId,false,error="Não foi possível registrar a chamada com segurança")); return }
+                    val job = scope.launch(start = CoroutineStart.LAZY) {
+                        try {
+                            val result = withTimeout(300_000) { toolExecutor?.invoke(tool,params,callId) ?: ToolResult(callId,false,error="Executor indisponível") }
+                            if(json.encodeToString(result).length < 65536) { if(results.size>=16) results.clear(); results[callId] = result }; sendResult(result)
+                        } catch (e: CancellationException) {
+                            sendResult(ToolResult(callId,false,error="Execução cancelada")); throw e
+                        } catch (e: Exception) { sendResult(ToolResult(callId,false,error=e.message ?: "Falha ao executar")) }
+                        finally { jobs.remove(callId) }
+                    }
+                    jobs[callId] = job; job.start()
+                }
+                else -> onMessage(msg)
+            }
         }
-
+        private fun sendResult(result: ToolResult) { send(BridgeTypes.TOOL_RESULT, json.encodeToJsonElement(ToolResult.serializer(),result)) }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (closed) return
-            onState(BridgeState.Failed(t.message ?: "ws failure"))
-            scheduleReconnect()
+            authenticated = false; handshakeJob?.cancel(); cancelTools(acknowledge=false); BridgeService.stopLocalTools?.invoke()
+            if (response?.code == 401 || response?.code == 403) { closed = true; onState(BridgeState.Failed("Acesso revogado. Faça o pareamento novamente.")); return }
+            onState(BridgeState.Failed("PC indisponível. Tentando reconectar…")); scheduleReconnect()
         }
-
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code,reason) }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            if (closed) {
-                onState(BridgeState.Disconnected)
-                return
-            }
-            onState(BridgeState.Disconnected)
-            scheduleReconnect()
+            authenticated = false; handshakeJob?.cancel()
+            if (closed) return
+            cancelTools(acknowledge=false); BridgeService.stopLocalTools?.invoke()
+            onState(BridgeState.Disconnected); scheduleReconnect()
         }
     }
-
-    private fun scheduleReconnect() {
-        if (closed) return
+    @Synchronized private fun scheduleReconnect() {
+        if (closed || reconnectJob?.isActive == true) return
         attempt++
-        val base = config.reconnectBaseMs
-        val max = config.reconnectMaxMs
-        val backoff = min(max, base * (1L shl min(attempt, 10)))
-        val jitter = (Math.random() * 500).toLong()
-        Thread {
-            try { Thread.sleep(backoff + jitter) } catch (_: InterruptedException) {}
-            if (!closed) connect()
-        }.start()
+        val backoff = min(config.reconnectMaxMs, config.reconnectBaseMs * (1L shl min(attempt, 10)))
+        reconnectJob = scope.launch { delay(backoff + (0..500).random()); if (!closed) connect() }
     }
 }

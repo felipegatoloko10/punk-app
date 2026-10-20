@@ -1,5 +1,7 @@
 package com.punk.voice
 
+import android.content.Context
+
 interface VoiceEngine {
     suspend fun startListening(onPartial: (String)->Unit, onFinal: (String)->Unit)
     suspend fun stopListening()
@@ -18,4 +20,17 @@ class NoopVoiceEngine : VoiceEngine {
 
 object VoiceManager {
     var engine: VoiceEngine = NoopVoiceEngine()
+    private var androidVoiceEngine: AndroidVoiceEngine? = null
+
+    fun cancelAll() { androidVoiceEngine?.cancelListening(); androidVoiceEngine?.stopSpeaking() }
+    fun release() { androidVoiceEngine?.destroy(); androidVoiceEngine = null; engine = NoopVoiceEngine() }
+
+    fun getOrCreateAndroidEngine(context: Context): AndroidVoiceEngine {
+        val current = androidVoiceEngine
+        if (current != null) return current
+        val newEngine = AndroidVoiceEngine(context.applicationContext)
+        androidVoiceEngine = newEngine
+        engine = newEngine
+        return newEngine
+    }
 }

@@ -1,0 +1,5 @@
+name: punk_control
+version: "3.0.0"
+description: "Punk Mobile policy and authenticated phone adapter; isolated to the punk-mobile profile."
+kind: standalone
+entry_point: punk_control:register

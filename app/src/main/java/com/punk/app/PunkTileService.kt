@@ -74,7 +74,7 @@ class PunkTileService : TileService() {
                 tile.state = Tile.STATE_ACTIVE
                 tile.label = "PUNK: Ativo"
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    tile.subtitle = "Conectado ao JARVIS"
+                    tile.subtitle = "Conectado ao PC"
                 }
             }
             is BridgeState.Connecting -> {

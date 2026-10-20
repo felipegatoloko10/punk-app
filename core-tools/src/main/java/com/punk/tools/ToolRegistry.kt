@@ -19,6 +19,11 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
+import kotlinx.coroutines.ensureActive
 
 data class ToolDef(val name: String, val description: String, val risk: String, val schema: String)
 
@@ -67,9 +72,102 @@ object ToolRegistry {
         ToolDef("send_notification","Publica uma notificação na barra do sistema","reversible_write","{}"),
         ToolDef("get_location","Obtém localização GPS em tempo real com endereço completo","reading","{}"),
         ToolDef("camera_capture","Captura foto da câmera frontal ou traseira em Base64","reading","{}")
-    )
+    ).map { it.copy(schema = ToolContracts.schemas.getValue(it.name).toString()) }
+
+    fun isSuccessful(result: JsonObject): Boolean =
+        result["error"]?.let { it !is JsonNull && ((it as? JsonPrimitive)?.content?.isNotBlank() ?: true) } != true &&
+            (result["ok"] as? JsonPrimitive)?.booleanOrNull != false &&
+            ((result["exitCode"] as? JsonPrimitive)?.intOrNull ?: 0) == 0
+
+    fun catalog(): JsonArray = buildJsonArray {
+        tools.forEach { tool -> add(buildJsonObject {
+            put("name", tool.name); put("description", tool.description); put("risk", tool.risk)
+            put("sensitive", tool.name in sensitiveTools)
+            put("parameters", ToolContracts.schemas.getValue(tool.name))
+        }) }
+    }
+
+    private val sensitiveTools = setOf("audio_record", "camera_capture", "screen_capture_b64", "screen_dump", "screencap",
+        "clipboard_get", "read_sms", "list_contacts", "list_calls", "list_notifications", "get_location", "unlock_device", "shell_exec")
+
+    fun capabilities(ctx: Context): JsonObject {
+        val shizuku = AxShell.isShizukuAvailable()
+        val accessibility = PunkAccessibilityService.isEnabled()
+        val visible = ToolRuntime.isUserVisible()
+        val recognitionAvailable = android.speech.SpeechRecognizer.isRecognitionAvailable(ctx)
+        val ttsAvailable = ctx.packageManager.queryIntentServices(Intent(android.speech.tts.TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE), 0).isNotEmpty()
+        val notificationsGranted = Build.VERSION.SDK_INT < 33 || ToolRuntime.hasPermission(ctx,android.Manifest.permission.POST_NOTIFICATIONS)
+        val permissions = mapOf("microphone" to android.Manifest.permission.RECORD_AUDIO, "camera" to android.Manifest.permission.CAMERA,
+            "location" to android.Manifest.permission.ACCESS_COARSE_LOCATION, "contacts" to android.Manifest.permission.READ_CONTACTS,
+            "smsRead" to android.Manifest.permission.READ_SMS, "smsSend" to android.Manifest.permission.SEND_SMS,
+            "callLog" to android.Manifest.permission.READ_CALL_LOG, "phoneCall" to android.Manifest.permission.CALL_PHONE)
+        fun permission(name: String) = ToolRuntime.hasPermission(ctx, permissions.getValue(name))
+        return buildJsonObject {
+            put("accessibility", accessibility); put("shizuku", shizuku); put("userVisible", visible)
+            put("speechRecognition",recognitionAvailable); put("textToSpeech",ttsAvailable)
+            put("shizukuStatus", buildJsonObject { AxShell.shizukuStatus().forEach { (key, value) -> when(value) { is Boolean -> put(key,value); is Int -> put(key,value) } } })
+            put("notificationListener", PunkNotificationListener.isEnabled())
+            put("postNotifications",notificationsGranted)
+            put("notificationForwarding", NotificationPrivacy.isForwardingEnabled(ctx))
+            put("permissions", buildJsonObject { permissions.forEach { (name, value) -> put(name, ToolRuntime.hasPermission(ctx, value)) } })
+            put("tools", buildJsonArray { tools.forEach { tool ->
+                val reason = when(tool.name) {
+                    "send_notification" -> if(notificationsGranted) null else "Permissão de notificações pendente"
+                    "tts_speak" -> if (ttsAvailable) null else "Instale ou ative um mecanismo de voz Android"
+                    "audio_record" -> ToolRuntime.captureError(ctx, android.Manifest.permission.RECORD_AUDIO)
+                    "camera_capture" -> ToolRuntime.captureError(ctx, android.Manifest.permission.CAMERA)
+                    "flashlight" -> if (permission("camera")) null else "Permissão de câmera pendente"
+                    "get_location" -> if (permission("location")) null else "Permissão de localização pendente"
+                    "list_contacts" -> if (permission("contacts")) null else "Permissão de contatos pendente"
+                    "read_sms" -> if (permission("smsRead")) null else "Permissão de SMS pendente"
+                    "send_sms" -> if (permission("smsSend")) null else "Permissão para enviar SMS pendente"
+                    "list_calls" -> if (permission("callLog")) null else "Permissão de chamadas pendente"
+                    "list_notifications" -> if (PunkNotificationListener.isEnabled()) null else "Ative acesso a notificações"
+                    "screen_dump", "input_tap", "input_swipe", "input_text", "global_action" -> if (accessibility || shizuku) null else "Ative acessibilidade ou Shizuku"
+                    "click_node", "scroll" -> if (accessibility) null else "Ative acessibilidade"
+                    "screen_capture_b64", "screencap", "key_event", "force_stop", "install_apk_silent", "set_wifi", "set_mobile_data", "unlock_device", "dumpsys", "pm_list" -> if (shizuku) null else "Ative e autorize Shizuku"
+                    "clipboard_get", "clipboard_set" -> if (visible) null else "Abra a sessão do PUNK"
+                    else -> null
+                }
+                add(buildJsonObject { put("name",tool.name); put("available",reason == null); if(reason != null) put("reason",reason) })
+            } })
+        }
+    }
+
+    /** Root also cancels the bridge task jobs; these close the native resources immediately. */
+    fun cancelAll(ctx: Context) {
+        ToolRuntime.activeCalls.toList().forEach { it.cancel(CancellationException("Controle interrompido pelo usuário")) }
+        AxShell.cancelAll(); AudioCapture.cancelAll(); CameraCapture.cancelAll(); TtsEngine.stop()
+        runCatching { (ctx.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator).cancel() }
+    }
 
     suspend fun invoke(ctx: Context, tool: String, params: JsonObject): JsonObject {
+        val name = ToolContracts.canonical(tool)
+        val arguments = ToolContracts.normalize(name, params)
+        val job = currentCoroutineContext().job
+        ToolRuntime.activeCalls.add(job)
+        try {
+            val validation = ToolContracts.validate(name, arguments)
+            val raw = if (validation != null) buildJsonObject { put("ok", false); put("error", validation) }
+                else if (name.startsWith("clipboard_") && !ToolRuntime.isUserVisible()) buildJsonObject { put("ok",false); put("error","Abra a sessão do PUNK para acessar a área de transferência.") }
+                else invokeValidated(ctx, name, arguments)
+            currentCoroutineContext().ensureActive()
+            val success = isSuccessful(raw)
+            val result = JsonObject(raw.toMutableMap().apply {
+                put("ok", JsonPrimitive(success))
+                if (!success && "error" !in this) put("error", JsonPrimitive("A ação não foi concluída. Verifique capacidade e estado do aparelho."))
+            })
+            AuditLog.append(ctx, com.punk.security.AuditEntry(AuditLog.now(), name, arguments.toString(), result.toString()))
+            return result
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
+            val result = buildJsonObject { put("ok", false); put("error", e.message ?: "Falha ao executar ferramenta") }
+            AuditLog.append(ctx, com.punk.security.AuditEntry(AuditLog.now(), name, arguments.toString(), result.toString()))
+            return result
+        } finally { ToolRuntime.activeCalls.remove(job) }
+    }
+
+    private suspend fun invokeValidated(ctx: Context, tool: String, params: JsonObject): JsonObject {
         val result: JsonObject = when(tool){
             "device_status" -> {
                 val s = DeviceStatusProvider.collect(ctx)
@@ -124,10 +222,11 @@ object ToolRegistry {
                 }
             }
             "screen_capture_b64", "screenshot_b64" -> {
-                val tempPath = "/sdcard/punk_screencap_temp.png"
-                val r = AxShell.screencap(tempPath)
-                if (r.isSuccess) {
-                    val b64Result = AxShell.exec("base64 -w 0 $tempPath && rm -f $tempPath")
+                val tempPath = "/sdcard/punk_screencap_${System.nanoTime()}.png"
+                try {
+                    val r = AxShell.screencap(tempPath)
+                    if (!r.isSuccess) return buildJsonObject { put("ok", false); put("error", r.stderr.ifBlank { "Erro ao capturar tela" }) }
+                    val b64Result = AxShell.exec("base64 -w 0 ${AxShell.quote(tempPath)}", requirePrivilege = true)
                     if (b64Result.isSuccess && b64Result.stdout.isNotBlank()) {
                         buildJsonObject {
                             put("ok", true)
@@ -137,8 +236,10 @@ object ToolRegistry {
                     } else {
                         buildJsonObject { put("ok", false); put("error", "Falha ao codificar imagem em base64") }
                     }
-                } else {
-                    buildJsonObject { put("ok", false); put("error", r.stderr.ifBlank { "Erro ao capturar tela" }) }
+                } finally {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        AxShell.exec("rm -f ${AxShell.quote(tempPath)}", timeoutMs = 2000, requirePrivilege = true)
+                    }
                 }
             }
             "whatsapp_send" -> {
@@ -151,6 +252,10 @@ object ToolRegistry {
                     put("phone", phone)
                     put("opened", res["opened"] as? Boolean ?: false)
                     put("sent", res["sent"] as? Boolean ?: false)
+                    put("sendAttempted", res["sendAttempted"] as? Boolean ?: false)
+                    put("deliveryVerified", false)
+                    put("status", res["status"] as? String ?: "failed")
+                    put("detail", res["detail"] as? String ?: "")
                     if (res.containsKey("error")) put("error", res["error"] as? String ?: "")
                 }
             }
@@ -164,14 +269,16 @@ object ToolRegistry {
             }
             "unlock_device" -> {
                 val pin = (params["pin"] as? JsonPrimitive)?.content
-                val res = AppAutomation.unlockDevice(pin)
+                val res = AppAutomation.unlockDevice(ctx, pin)
                 buildJsonObject {
                     put("ok", res["ok"] as? Boolean ?: false)
+                    put("unlocked", res["unlocked"] as? Boolean ?: false)
+                    if (res["error"] != null) put("error", res["error"] as String)
                 }
             }
             "install_apk_silent" -> {
                 val path = (params["path"] as? JsonPrimitive)?.content ?: "/sdcard/download/app.apk"
-                val r = AxShell.exec("pm install -r -d $path")
+                val r = AxShell.exec("pm install -r ${AxShell.quote(path)}", requirePrivilege = true)
                 buildJsonObject {
                     put("ok", r.isSuccess)
                     put("stdout", r.stdout)
@@ -181,18 +288,24 @@ object ToolRegistry {
             }
             "set_wifi" -> {
                 val enabled = (params["enabled"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: true
-                val r = AxShell.exec("svc wifi " + (if (enabled) "enable" else "disable"))
+                val r = AxShell.exec("svc wifi " + (if (enabled) "enable" else "disable"), requirePrivilege = true)
                 buildJsonObject {
                     put("ok", r.isSuccess)
-                    put("wifi", enabled)
+                    put("requestedEnabled", enabled)
+                    put("verified", false)
+                    put("status", if(r.isSuccess) "command_accepted" else "failed")
+                    if(!r.isSuccess) put("error",r.stderr.ifBlank { "Não foi possível alterar Wi-Fi" })
                 }
             }
             "set_mobile_data" -> {
                 val enabled = (params["enabled"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: true
-                val r = AxShell.exec("svc data " + (if (enabled) "enable" else "disable"))
+                val r = AxShell.exec("svc data " + (if (enabled) "enable" else "disable"), requirePrivilege = true)
                 buildJsonObject {
                     put("ok", r.isSuccess)
-                    put("mobile_data", enabled)
+                    put("requestedEnabled", enabled)
+                    put("verified", false)
+                    put("status", if(r.isSuccess) "command_accepted" else "failed")
+                    if(!r.isSuccess) put("error",r.stderr.ifBlank { "Não foi possível alterar dados móveis" })
                 }
             }
             "flashlight", "torch" -> {
@@ -253,12 +366,16 @@ object ToolRegistry {
                         @Suppress("DEPRECATION")
                         SmsManager.getDefault()
                     }
-                    smsMgr.sendTextMessage(to, null, msg, null, null)
+                    val parts = smsMgr.divideMessage(msg)
+                    if (parts.size > 1) smsMgr.sendMultipartTextMessage(to, null, parts, null, null)
+                    else smsMgr.sendTextMessage(to, null, msg, null, null)
                     buildJsonObject {
                         put("ok", true)
                         put("to", to)
                         put("message", msg)
                         put("method", "direct_sms")
+                        put("status", "submitted_to_modem")
+                        put("deliveryVerified", false)
                     }
                 } catch (e: Exception) {
                     try {
@@ -269,8 +386,11 @@ object ToolRegistry {
                         }
                         ctx.startActivity(intent)
                         buildJsonObject {
-                            put("ok", true)
+                            put("ok", false)
                             put("method", "intent_fallback")
+                            put("opened", true)
+                            put("status", "draft_opened")
+                            put("error", "SMS não enviado. Rascunho aberto no aplicativo de mensagens.")
                             put("to", to)
                             put("message", msg)
                         }
@@ -415,6 +535,7 @@ object ToolRegistry {
                 }
             }
             "list_notifications" -> {
+                if (!PunkNotificationListener.isEnabled()) return buildJsonObject { put("ok",false); put("error","Acesso a notificações não está ativo") }
                 val limit = (params["limit"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 20
                 val notifs = PunkNotificationListener.recentNotifications.take(limit)
                 val arr = buildJsonArray {
@@ -466,11 +587,16 @@ object ToolRegistry {
                     ?: (params["pkg"] as? JsonPrimitive)?.content ?: ""
                 try {
                     val pm = ctx.packageManager
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        val sender = pm.getLaunchIntentSenderForPackage(pkg)
+                        sender.sendIntent(ctx, 0, null, null, null)
+                        return buildJsonObject { put("ok",true); put("package",pkg); put("status","launch_requested") }
+                    }
                     val intent = pm.getLaunchIntentForPackage(pkg)
                     if (intent != null) {
                         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
                         ctx.startActivity(intent)
-                        buildJsonObject { put("ok", true); put("package", pkg) }
+                        buildJsonObject { put("ok", true); put("package", pkg); put("status","launch_requested") }
                     } else {
                         buildJsonObject { put("ok", false); put("error", "App não encontrado: $pkg") }
                     }
@@ -507,7 +633,8 @@ object ToolRegistry {
                 try {
                     val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                     val streamType = when (streamName.lowercase()) {
-                        "ring", "call" -> AudioManager.STREAM_RING
+                        "ring" -> AudioManager.STREAM_RING
+                        "call" -> AudioManager.STREAM_VOICE_CALL
                         "alarm" -> AudioManager.STREAM_ALARM
                         "notification" -> AudioManager.STREAM_NOTIFICATION
                         else -> AudioManager.STREAM_MUSIC
@@ -574,19 +701,22 @@ object ToolRegistry {
                         put("method", "accessibility")
                     }
                 } else {
-                    val keycode = when(action.lowercase()) {
-                        "back" -> 4
-                        "home" -> 3
-                        "recents", "app_switch" -> 187
-                        "notifications" -> 83
-                        else -> 3
+                    val command = when(action.lowercase()) {
+                        "back" -> "input keyevent 4"
+                        "home" -> "input keyevent 3"
+                        "recents" -> "input keyevent 187"
+                        "notifications" -> "cmd statusbar expand-notifications"
+                        "quick_settings" -> "cmd statusbar expand-settings"
+                        "lock_screen" -> "input keyevent 223"
+                        "screenshot" -> "screencap -p /sdcard/punk_screencap.png"
+                        else -> return buildJsonObject { put("ok", false); put("error", "Ação global inválida") }
                     }
-                    val r = AxShell.keyEvent(keycode)
+                    val r = AxShell.exec(command, requirePrivilege = true)
                     buildJsonObject {
                         put("ok", r.isSuccess)
                         put("action", action)
-                        put("method", "shizuku_keyevent")
-                        put("code", keycode)
+                        put("method", r.source)
+                        if (!r.isSuccess) put("error", r.stderr.ifBlank { "Ação do sistema falhou" })
                     }
                 }
             }
@@ -599,11 +729,12 @@ object ToolRegistry {
                         put("nodes", axSnapshot)
                     }
                 } else {
-                    val raw = AxShell.exec("uiautomator dump /dev/stdout")
+                    val raw = AxShell.exec("uiautomator dump /dev/stdout", requirePrivilege = true)
                     buildJsonObject {
-                        put("ok", true)
+                        put("ok", raw.isSuccess && raw.stdout.isNotBlank())
                         put("source", raw.source)
                         put("nodes", raw.stdout.take(12000))
+                        if (!raw.isSuccess) put("error", raw.stderr.ifBlank { "Não foi possível ler a tela" })
                     }
                 }
             }
@@ -634,11 +765,12 @@ object ToolRegistry {
             }
             "input_text" -> {
                 val text = (params["text"] as? JsonPrimitive)?.content ?: ""
-                val clear = (params["clear"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
+                val clear = (params["clearFirst"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
                 val axOk = PunkAccessibilityService.instance?.inputText(text, clear)
                 if (axOk == true) {
                     buildJsonObject { put("ok", true); put("method", "accessibility"); put("text", text) }
                 } else {
+                    if (clear) return buildJsonObject { put("ok",false); put("error","Substituir texto exige acessibilidade e um campo editável focado") }
                     val r = AxShell.inputText(text)
                     buildJsonObject { put("ok", r.isSuccess); put("method", r.source); put("text", text) }
                 }
@@ -683,6 +815,7 @@ object ToolRegistry {
                 val t = (params["timeoutMs"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 15000L
                 val r = AxShell.exec(cmd, t)
                 buildJsonObject {
+                    put("ok", r.isSuccess)
                     put("stdout", r.stdout.take(8000))
                     put("stderr", r.stderr.take(4000))
                     put("exitCode", r.exitCode)
@@ -691,22 +824,22 @@ object ToolRegistry {
             }
             "pm_list" -> {
                 val f = (params["filter"] as? JsonPrimitive)?.content ?: ""
-                val raw = AxShell.listPackages()
-                val filtered = if (f.isBlank()) raw else raw.lineSequence().filter { it.contains(f, true) }.joinToString("\n")
-                buildJsonObject { put("packages", filtered.take(12000)) }
+                val raw = AxShell.exec("pm list packages", requirePrivilege = true)
+                val filtered = if (f.isBlank()) raw.stdout else raw.stdout.lineSequence().filter { it.contains(f, true) }.joinToString("\n")
+                buildJsonObject { put("ok",raw.isSuccess); put("packages", filtered.take(12000)); if(!raw.isSuccess) put("error",raw.stderr) }
             }
             "getprop" -> {
                 val k = (params["key"] as? JsonPrimitive)?.content ?: ""
-                val v = AxShell.getProp(k)
-                buildJsonObject { put("value", v) }
+                val r = AxShell.exec("getprop ${AxShell.quote(k)}")
+                buildJsonObject { put("ok",r.isSuccess); put("value", r.stdout.trim()); if(!r.isSuccess) put("error",r.stderr) }
             }
             "dumpsys" -> {
                 val svc = (params["service"] as? JsonPrimitive)?.content ?: "battery"
-                val v = AxShell.dumpsys(svc)
-                buildJsonObject { put("output", v.take(10000)) }
+                val r = AxShell.exec("dumpsys ${AxShell.quote(svc)}", requirePrivilege = true)
+                buildJsonObject { put("ok",r.isSuccess); put("output", r.stdout.take(10000)); if(!r.isSuccess) put("error",r.stderr) }
             }
             "send_notification", "notify" -> {
-                val title = (params["title"] as? JsonPrimitive)?.content ?: "Mr. Punk (JARVIS)"
+                val title = (params["title"] as? JsonPrimitive)?.content ?: "PUNK"
                 val text = (params["text"] as? JsonPrimitive)?.content
                     ?: (params["message"] as? JsonPrimitive)?.content ?: "⚡ Notificação enviada por Sir Felipe!"
                 try {
@@ -734,7 +867,9 @@ object ToolRegistry {
                 }
             }
             "get_location", "location", "gps" -> {
-                val loc = LocationProvider.getCurrentLocation(ctx)
+                val loc = LocationProvider.getCurrentLocation(ctx,
+                    params["maxAgeMs"]?.jsonPrimitive?.longOrNull ?: 30000L,
+                    params["timeoutMs"]?.jsonPrimitive?.longOrNull ?: 15000L)
                 buildJsonObject {
                     val ok = loc["ok"] as? Boolean ?: false
                     put("ok", ok)
@@ -749,6 +884,8 @@ object ToolRegistry {
                         put("state", loc["state"] as? String ?: "")
                         put("country", loc["country"] as? String ?: "")
                         put("timestamp", loc["timestamp"] as? Long ?: 0L)
+                        put("ageMs", loc["ageMs"] as? Long ?: 0L)
+                        put("fresh", loc["fresh"] as? Boolean ?: false)
                     } else {
                         put("error", loc["error"] as? String ?: "Falha ao obter localização")
                     }
@@ -774,7 +911,6 @@ object ToolRegistry {
             }
             else -> buildJsonObject { put("error", "tool desconhecida: $tool") }
         }
-        AuditLog.append(ctx, com.punk.security.AuditEntry(AuditLog.now(), tool, params.toString(), result.toString()))
         return result
     }
 }

@@ -25,8 +25,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation("androidx.core:core-ktx:1.12.0")
-implementation(libs.camerax.core)
-implementation(libs.camerax.camera2)
-implementation(libs.camerax.lifecycle)
 
 }

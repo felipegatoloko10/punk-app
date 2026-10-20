@@ -10,3 +10,13 @@ captures
 .cxx
 *.apk
 !apk/*.apk
+
+/build-validation.log
+**/__pycache__/
+*.pyc
+
+/build-final.log
+
+# Capturas locais antigas e artefatos de diagnóstico
+/screenshot_*.png
+/nul

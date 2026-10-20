@@ -1,130 +1,80 @@
-# PUNK Companion v2.1 ⚡
-> **The Sovereign Autonomous Android Bridge & Neural Telemetry Suite**
-> Desenvolvido para transformar qualquer dispositivo Android moderno (testado e otimizado para Samsung Galaxy S23 Ultra - Android 16) em uma extensão autônoma, sensorial e executiva para Agentes de IA (Hermes Agent / JARVIS).
+# Punk · 3.0.0
 
-[![Android](https://img.shields.io/badge/Platform-Android%2014--16%20(One%20UI%206--8)-green.svg)](https://developer.android.com/)
-[![Shizuku](https://img.shields.io/badge/Privilege-Shizuku%20UID%202000-blue.svg)](https://shizuku.rikka.app/)
-[![Kotlin](https://img.shields.io/badge/Language-Kotlin%201.9-purple.svg)](https://kotlinlang.org/)
-[![License](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
+**Seu agente no computador e no Android, em uma única conversa.**
 
----
+[Baixar APK](apk/Punk-3.0.0.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.0.0-validation.json)
 
-## 🎯 O que é o PUNK Companion e Para Que Serve?
+Aplicativo Android nativo para conversar com o seu Punk e usar as ferramentas do Hermes no computador e no celular. Interface em português, com fundo grafite, destaque ciano e três áreas: **Conversa**, **Dispositivos** e **Atividade**.
 
-O **PUNK Companion** não é um aplicativo comum de controle remoto. Ele foi desenhado como o **"corpo físico e sensorial"** de um assistente de inteligência artificial autônomo (JARVIS / Hermes Agent).
+## Instalar no celular
 
-Enquanto LLMs e agentes de IA geralmente ficam confinados a servidores, navegadores e terminais, o **PUNK Companion** estabelece uma ponte bidirecional contínua de baixíssima latência (WebSocket + REST) entre o cérebro da IA e o hardware do smartphone.
+O APK está em [`apk/Punk-3.0.0.apk`](apk/Punk-3.0.0.apk), versão 3.0.0, código 24, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e mantém a chave existente para permitir atualização dos APKs fornecidos. Antes de atualizar outro APK, confira se a assinatura é compatível. Instalar por atualização preserva os dados; a assinatura efetiva no S23 ainda precisa ser conferida.
 
-Com ele, o agente adquire:
-* **Olhos:** Visão remota em tempo real via captura de tela em alta definição e fotos silenciosas através das câmeras física frontal e traseira (`Camera2`).
-* **Voz e Audição:** Síntese de fala imediata (`TTS`), reconhecimento de voz e escuta em streaming de alta fidelidade.
-* **Tato e Coordenação Motora:** Capacidade de navegar em qualquer aplicativo através de cliques (`tap`), gestos (`swipe`), rolagem (`scroll`) e digitação (`input_text`), combinando acessibilidade nativa com permissões de nível Shell ADB via Shizuku.
-* **Senso Espacial e Contextual:** Coordenadas GPS em tempo real com resolução reversa de endereço (rua, bairro, cidade), telemetria de bateria, Wi-Fi, sensores e notificações.
+1. Copie o APK para o S23 Ultra e instale.
+2. No PC, execute `bridge/INICIAR-PUNK.ps1` para iniciar o novo bridge.
+3. Execute `bridge/PAREAR-PUNK.ps1`: abre uma página local com QR de uso único, válido por cinco minutos.
+4. No app, abra **Configurações → Ler QR code**. Também é possível importar o `bridge/runtime/pairing.json` ou colar seu conteúdo.
+5. Em **Dispositivos**, ative os recursos desejados. Microfone, câmera, localização, contatos e SMS têm concessões próprias; acessibilidade e Shizuku são apresentados separadamente.
 
----
+As portas novas são **18765 (TLS)** e **18766 (API privada em loopback)**, preservando o bridge anterior nas portas 8765/8766 durante a transição. O canal do celular exige token por dispositivo e confere a identidade criptográfica do PC. O modo remoto usa seu Tailscale já conectado; o aplicativo não alterna a VPN automaticamente.
 
-## 🚀 Arsenal de Funcionalidades Implementadas
+Em uma instalação nova no computador, siga primeiro a [provisão do bridge](bridge/README.md). Os scripts de início e pareamento pressupõem que essa configuração já existe; o repositório não inclui as credenciais nem a identidade pessoal do agente.
 
-### 1. 👁️ Visão Computacional Remota (Multimodal Vision)
-- **`screen_capture_b64`**: Captura a tela atual do dispositivo em resolução nativa (com pipeline otimizado para telas QHD+ de 1440p) e retorna diretamente em Base64 para inspeção visual imediata por modelos multimodais (Gemini Flash, Claude, GPT-4o).
-- **`camera_capture`**: Dispara capturas em segundo plano com seleção de lente (`facing: "front"` ou `"back"`), resolução de até 1080p, foco e exposição automáticos sem necessidade de interromper o usuário.
+## O que foi implementado
 
-### 2. 👆 Computer-Use Tátil & Ações do Sistema
-- **`input_tap`**: Realiza toques precisos por coordenadas `(x, y)` na tela.
-- **`input_swipe`**: Executa arrastos direcionais suaves (scroll em feeds, swipe de notificações, navegação por carrossel).
-- **`input_text`**: Injeta texto formatado ou strings complexas diretamente em campos focados.
-- **`global_action`**: Aciona botões do sistema operacional Android (`home`, `back`, `recents`, `notifications`, `lock_screen`) com dupla camada de segurança: via *AccessibilityService* ou via *Shizuku ADB Keyevent*.
+- Conversa com streaming, Markdown, código copiável, múltiplas conversas, histórico persistente, busca, exportação e repetição explícita de pedidos interrompidos.
+- Voz na mesma conversa, com transcrição e STT/TTS Android em pt-BR. Respostas antigas não são reproduzidas ao reabrir a tela.
+- Cartões de dispositivos e permissões com estado real, histórico de ações e distinção entre comando aceito e resultado confirmado.
+- Autonomia por padrão. O modo supervisionado pede aprovação antes de ferramentas de alteração ou comportamento indeterminado; vale para o canal mobile, sem alterar a política dos outros canais.
+- Comandos explícitos: `/supervisionado`, `/autonomo`, `/parar`; na voz, “Punk, peça confirmação antes de agir”, “Punk, volte ao modo autônomo” e “Punk, para tudo”.
+- Parada de execuções locais e solicitação de cancelamento remoto. A confirmação remota espera as tarefas e os recursos encerrarem; falha de parada permanece visível.
+- Catálogo de 43 ferramentas Android com schemas, validação, callbacks de gestos, tratamento de falhas e cancelamento.
+- Anexos originais com chunks, progresso, retomada e SHA-256; limite de 512 MB por arquivo e cinco anexos por pedido. Recebimento de arquivos do PC na conversa.
+- Credenciais Android protegidas pelo Keystore, autenticação separada no PC e auditoria com dados sensíveis removidos e cadeia de integridade.
 
-### 3. 📍 Geolocalização & Telemetria
-- **`get_location`**: Fusão dos provedores GPS e Network em tempo real com geocodificação reversa nativa em português (`pt-BR`), informando latitude, longitude, precisão, altitude, logradouro, município e estado.
-- **`dumpsys` & `shell_exec`**: Acesso completo ao subsistema Android via Shizuku (`UID 2000`), permitindo monitorar o estado da bateria, tráfego de rede, processos ativos, memória e logs do sistema.
+## Integração com o agente
 
-### 4. 🗣️ Áudio, Voz e Interação Humana
-- **`tts_speak`**: Motor de síntese de fala local e imediata na língua portuguesa com controle de volume, tom e velocidade.
-- **`audio_record`**: Gravação de áudio do microfone do dispositivo comprimido em AAC/Base64 para transcrição e análise acústica remota.
-- **`flashlight`**: Controle da lanterna LED traseira (ligar, desligar, pulso SOS).
-- **`vibrate`**: Padrões táteis de vibração háptica para alertas do assistente.
-- **`toast` & `send_notification`**: Exibição de avisos flutuantes e notificações ricas na barra de status do sistema.
+O bridge usa a API nativa do Hermes (`/v1/runs` + SSE retomável), no perfil `punk-mobile`. A provisão inicializa esse perfil a partir da identidade, configuração, skills e plugins selecionados do agente existente, com histórico próprio e os mesmos serviços externos de memória configurados. Mudanças futuras nos arquivos de personalidade do perfil original precisam ser sincronizadas explicitamente.
 
-### 5. 📱 Telecomunicações & Área de Transferência
-- **`dial_phone`**: Discagem rápida e chamadas telefônicas diretas (`ACTION_CALL`).
-- **`send_sms`**: Envio de mensagens de texto SMS diretamente pelo modem do smartphone.
-- **`clipboard_get` & `clipboard_set`**: Sincronização em tempo real da área de transferência entre a máquina do agente e o smartphone.
+O plugin `punk_control` aplica a política de execução independentemente do modo YOLO do Hermes. O bridge rejeita novos pedidos quando o componente de política não está saudável. Provisão e detalhes do protocolo: [`bridge/README.md`](bridge/README.md) e [`bridge/PROTOCOL.md`](bridge/PROTOCOL.md).
 
----
+`bridge/runtime/` contém chaves, arquivos e histórico privados e está excluído do Git. Gere o pareamento localmente; não publique essa pasta. O código novo não usa nem replica a credencial do roteador embutida no servidor antigo.
 
-## 🏗️ Arquitetura do Sistema
+## Limites e validação
 
-```
-┌────────────────────────────────────────────────────────┐
-│                   Hermes Agent / JARVIS                │
-│                 (PC / Servidor / Nuvem)                │
-└──────────────────────────┬─────────────────────────────┘
-                           │ HTTP REST / WebSocket (Portas 8765 / 8766)
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│             punk_server.py (Bridge Daemon)             │
-│        Buffer expandido para 32MB (QuadHD Vision)      │
-└──────────────────────────┬─────────────────────────────┘
-                           │ Protocolo PUNK WebSocket
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│              PUNK Companion Android App                │
-│                                                        │
-│  ┌──────────────────┐            ┌──────────────────┐  │
-│  │   core-bridge    │◄───────────┤   core-tools     │  │
-│  │ (WS / KeepAlive) │            │  (ToolRegistry)  │  │
-│  └────────┬─────────┘            └────────┬─────────┘  │
-│           │                               │            │
-│  ┌────────▼─────────┐            ┌────────▼─────────┐  │
-│  │ core-accessibility│           │ core-axmanager   │  │
-│  │  (System Gestures)│           │ (Shizuku UID2000)│  │
-│  └──────────────────┘            └──────────────────┘  │
-└────────────────────────────────────────────────────────┘
+O controle é limitado às permissões concedidas pelo Android, acessibilidade e Shizuku sem root, e aos acessos da sessão Windows do Hermes. Telas protegidas, dados privados de outros aplicativos, janelas elevadas e operações em segundo plano podem ser restritos. Captura de câmera/microfone exige o Punk visível nesta versão.
+
+A voz inicial usa os mecanismos instalados no Android. Wake word permanente, voz full-duplex, overlay e modos avançados de câmera ficam para evolução posterior. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
+
+Validação desta versão: **23 testes Android e 14 testes Python passaram**, release assinada e lint sem erros bloqueantes. Foram exercitados política, cancelamento, replay, contratos de ferramentas, privacidade e auditoria. Os testes do bridge usam TLS real e Hermes simulado. Também passou um teste separado com o Hermes local real: autenticação, envio de pedido e recebimento de `PUNK_OK` por streaming. As bibliotecas nativas do APK foram verificadas quanto ao alinhamento de 16 KB.
+
+**O S23 Ultra não esteve conectado por ADB nesta execução.** A aparência em execução, permissões Samsung, Bluetooth, comportamento em segundo plano e atualização sobre a instalação efetiva precisam de validação no aparelho.
+
+## Compilar e testar
+
+Use JDK 17 ou superior (esta execução usou JDK 21):
+
+```powershell
+.\gradlew.bat :app:assembleRelease :app:lintDebug :core-bridge:testDebugUnitTest :feature-chat:testDebugUnitTest :core-tools:testDebugUnitTest :core-security:testDebugUnitTest
 ```
 
----
-
-## 🛠️ Fluxo de Desenvolvimento e Engenharia
-
-1. **Modularização Android (Gradle Kotlin Multi-Module):**
-   * Estruturado em módulos coesos: `app`, `core-tools`, `core-bridge`, `core-accessibility`, `core-axmanager`, `core-voice`, `core-media`, `core-security`, `feature-hud`, `feature-chat`.
-2. **Integração Shizuku Privileged API:**
-   * Utilização da biblioteca `dev.rikka.shizuku:api:13.1.5` para invocar comandos e obter permissões de sistema sem necessidade de root tradicional, aproveitando o daemon ADB em porta sem fio.
-3. **Resolução de Desafios de Alta Resolução (Hotfix 1440p):**
-   * Ao transmitir capturas de tela nativas da tela do Galaxy S23 Ultra em Base64 bruto (~2.2MB por imagem), o servidor WebSocket enfrentou o erro RFC 6455 `Code 1009 (Message size exceeds limit)`.
-   * Solução: Implementado buffer dinâmico de 32MB tanto no `websockets.serve` quanto no `aiohttp.web.Application` no bridge Python (`punk_server.py`), possibilitando streaming e OCR/Visão instantâneos.
-4. **Captura Silenciosa com Camera2 API:**
-   * Criação do componente `CameraCapture.kt` utilizando corrotinas suspensas (`suspendCancellableCoroutine`) com ciclo de vida isolado em `HandlerThread`, garantindo captura assíncrona limpa sem travar a interface.
-
----
-
-## 📦 Como Instalar e Rodar
-
-### Pré-requisitos
-* Android 10 ou superior (Recomendado: Android 14+ / One UI 6+).
-* [Shizuku](https://shizuku.rikka.app/) instalado e ativado (via Wireless Debugging).
-
-### Instalação Direta
-1. Baixe o APK compilado na pasta [`/apk/PUNK-Companion-v2.1-autonomous.apk`](./apk/PUNK-Companion-v2.1-autonomous.apk) ou nas [Releases](../../releases).
-2. Instale no seu dispositivo Android.
-3. Abra o app e conceda a permissão ao Shizuku e as permissões de Câmera, Localização e Acessibilidade.
-4. Configure o IP do seu servidor bridge nas configurações do Companion.
-
-### Compilação a partir do Código-Fonte
-```bash
-# Clone o repositório
-git clone https://github.com/felipegatoloko10/punk-app.git
-cd punk-app
-
-# Compile o APK de depuração
-./gradlew assembleDebug
+```powershell
+cd bridge
+python -m unittest discover -s tests -v
 ```
 
----
+## Organização do código
 
-## 📄 Licença
-Distribuído sob a licença MIT. Consulte `LICENSE` para mais detalhes.
+| Área | Responsabilidade |
+| --- | --- |
+| `app` | Navegação, visual, configurações e composição do aplicativo |
+| `feature-chat` | Conversas, persistência Room, streaming e anexos |
+| `core-bridge` | Pareamento, TLS, reconexão, supervisão e cancelamento |
+| `core-tools` | Catálogo e execução das ferramentas Android |
+| `core-accessibility` | Leitura de tela e gestos acessíveis |
+| `core-axmanager` | Operações de shell com Shizuku |
+| `core-voice` | Reconhecimento e síntese de voz |
+| `core-security` | Auditoria e integridade |
+| `bridge` | Servidor Python e plugin de integração com o Hermes |
 
----
-*Construído com lealdade, precisão e autonomia total por Mr. Punk (JARVIS) para Sir Felipe.*
+O histórico Git mantém as versões anteriores. Os APKs antigos na pasta `apk/` são históricos; use **Punk-3.0.0.apk** para esta versão.

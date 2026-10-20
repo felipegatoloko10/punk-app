@@ -17,9 +17,14 @@ import java.nio.ByteBuffer
 import kotlin.coroutines.resume
 
 object CameraCapture {
+    private val activeCaptures = java.util.concurrent.ConcurrentHashMap.newKeySet<() -> Unit>()
+    fun cancelAll() { activeCaptures.toList().forEach { it.invoke() } }
 
     @SuppressLint("MissingPermission")
     suspend fun capturePhoto(ctx: Context, facing: String = "back"): Map<String, Any> = withContext(Dispatchers.IO) {
+        ToolRuntime.captureError(ctx, android.Manifest.permission.CAMERA)?.let {
+            return@withContext mapOf("ok" to false, "error" to it)
+        }
         val result = mutableMapOf<String, Any>()
         val cameraManager = ctx.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
         if (cameraManager == null) {
@@ -75,20 +80,34 @@ object CameraCapture {
         cm: CameraManager,
         cameraId: String
     ): Map<String, Any> = suspendCancellableCoroutine { cont ->
+        val sizes = cm.getCameraCharacteristics(cameraId)
+            .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(ImageFormat.JPEG)
+        val size = sizes?.filter { it.width <= 1920 && it.height <= 1920 }?.maxByOrNull { it.width * it.height }
+            ?: sizes?.minByOrNull { it.width.toLong() * it.height }
+        if (size == null) {
+            cont.resume(mapOf("ok" to false, "error" to "Câmera não oferece captura JPEG compatível"))
+            return@suspendCancellableCoroutine
+        }
         val thread = HandlerThread("PunkCameraCapture")
         thread.start()
         val handler = Handler(thread.looper)
 
-        val imageReader = ImageReader.newInstance(1920, 1080, ImageFormat.JPEG, 2)
+        val imageReader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 2)
         var cameraDevice: CameraDevice? = null
         var captureSession: CameraCaptureSession? = null
+        var opening = true
+        var cancelCapture: (() -> Unit)? = null
 
         fun cleanup() {
+            cancelCapture?.let { activeCaptures.remove(it) }
             try { captureSession?.close() } catch (_: Exception) {}
             try { cameraDevice?.close() } catch (_: Exception) {}
             try { imageReader.close() } catch (_: Exception) {}
-            thread.quitSafely()
+            // Keep the callback thread alive until a pending open can be closed in onOpened.
+            if (!opening) thread.quitSafely()
         }
+        cancelCapture = { cont.cancel(kotlinx.coroutines.CancellationException("Captura interrompida")); cleanup() }
+        cancelCapture?.let { activeCaptures.add(it) }
 
         imageReader.setOnImageAvailableListener({ reader ->
             var image: Image? = null
@@ -118,8 +137,11 @@ object CameraCapture {
         }, handler)
 
         try {
+            if (!cont.isActive) { opening = false; cleanup(); return@suspendCancellableCoroutine }
             cm.openCamera(cameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
+                    opening = false
+                    if (!cont.isActive) { camera.close(); cleanup(); return }
                     cameraDevice = camera
                     try {
                         @Suppress("DEPRECATION")
@@ -155,16 +177,21 @@ object CameraCapture {
                 }
 
                 override fun onDisconnected(camera: CameraDevice) {
+                    opening = false
+                    camera.close()
                     if (cont.isActive) cont.resume(mapOf("ok" to false, "error" to "Câmera desconectada"))
                     cleanup()
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
+                    opening = false
+                    camera.close()
                     if (cont.isActive) cont.resume(mapOf("ok" to false, "error" to "Erro no hardware da câmera: código $error"))
                     cleanup()
                 }
             }, handler)
         } catch (e: Exception) {
+            opening = false
             if (cont.isActive) cont.resume(mapOf("ok" to false, "error" to "Falha ao abrir câmera: ${e.message}"))
             cleanup()
         }

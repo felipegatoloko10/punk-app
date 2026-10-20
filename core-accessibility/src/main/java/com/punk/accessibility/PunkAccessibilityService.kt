@@ -8,6 +8,13 @@ import android.os.Build
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.os.Handler
+import android.os.Looper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 
 class PunkAccessibilityService : AccessibilityService() {
 
@@ -15,11 +22,32 @@ class PunkAccessibilityService : AccessibilityService() {
         var instance: PunkAccessibilityService? = null
             private set
         fun isEnabled(): Boolean = instance != null
+        fun hasPendingGestures(): Boolean = instance?.activeGestures?.isNotEmpty() == true
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+    }
+
+    private val activeGestures = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
+    private val gestureSequence = java.util.concurrent.atomic.AtomicLong()
+    private var lastVolumeDownTime = 0L
+
+    override fun onKeyEvent(event: android.view.KeyEvent?): Boolean {
+        if (event != null && event.keyCode == android.view.KeyEvent.KEYCODE_VOLUME_DOWN && event.action == android.view.KeyEvent.ACTION_DOWN) {
+            val now = System.currentTimeMillis()
+            if (now - lastVolumeDownTime < 450) {
+                lastVolumeDownTime = 0L
+                val intent = android.content.Intent(this, Class.forName("com.punk.app.VoiceActivity")).apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                startActivity(intent)
+                return true
+            }
+            lastVolumeDownTime = now
+        }
+        return super.onKeyEvent(event)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
@@ -37,8 +65,8 @@ class PunkAccessibilityService : AccessibilityService() {
         var count = 0
         fun dfs(n: AccessibilityNodeInfo, depth: Int) {
             if (count >= maxNodes) return
-            val text = n.text?.toString()?.take(80) ?: ""
-            val desc = n.contentDescription?.toString()?.take(80) ?: ""
+            val text = if (n.isPassword) "[protegido]" else n.text?.toString()?.take(80) ?: ""
+            val desc = if (n.isPassword) "" else n.contentDescription?.toString()?.take(80) ?: ""
             val id = n.viewIdResourceName?.substringAfterLast("/") ?: ""
             val cls = n.className?.toString()?.substringAfterLast(".") ?: ""
             val clickable = n.isClickable
@@ -62,20 +90,19 @@ class PunkAccessibilityService : AccessibilityService() {
         return sb.toString().ifBlank { "(tela vazia ou sem nós úteis)" }.take(12000)
     }
 
-    fun performTap(x: Int, y: Int): Boolean {
+    suspend fun performTap(x: Int, y: Int): Boolean {
+        val metrics = resources.displayMetrics
+        if (x !in 0 until metrics.widthPixels || y !in 0 until metrics.heightPixels) return false
         val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
             .build()
-        var ok = false
-        dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(g: GestureDescription?) { ok = true }
-        }, null)
-        Thread.sleep(120)
-        return true
+        return awaitGesture(gesture, 2000L)
     }
 
-    fun performSwipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 300L): Boolean {
+    suspend fun performSwipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 300L): Boolean {
+        val metrics = resources.displayMetrics
+        if (listOf(x1,x2).any { it !in 0 until metrics.widthPixels } || listOf(y1,y2).any { it !in 0 until metrics.heightPixels }) return false
         val path = Path().apply {
             moveTo(x1.toFloat(), y1.toFloat())
             lineTo(x2.toFloat(), y2.toFloat())
@@ -83,13 +110,29 @@ class PunkAccessibilityService : AccessibilityService() {
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(50L, 2000L)))
             .build()
-        var ok = false
-        dispatchGesture(gesture, object : GestureResultCallback() {
-            override fun onCompleted(g: GestureDescription?) { ok = true }
-        }, null)
-        Thread.sleep(durationMs + 60)
-        return true
+        return awaitGesture(gesture, durationMs.coerceIn(50L, 2000L) + 2000L)
     }
+
+    private suspend fun awaitGesture(gesture: GestureDescription, timeoutMs: Long): Boolean =
+        withContext(Dispatchers.Main.immediate) {
+            withTimeoutOrNull(timeoutMs) {
+                suspendCancellableCoroutine { continuation ->
+                    val gestureId=gestureSequence.incrementAndGet()
+                    activeGestures.add(gestureId)
+                    val accepted = dispatchGesture(gesture, object : GestureResultCallback() {
+                        override fun onCompleted(g: GestureDescription?) {
+                            activeGestures.remove(gestureId)
+                            if (continuation.isActive) continuation.resume(true)
+                        }
+                        override fun onCancelled(g: GestureDescription?) {
+                            activeGestures.remove(gestureId)
+                            if (continuation.isActive) continuation.resume(false)
+                        }
+                    }, Handler(Looper.getMainLooper()))
+                    if (!accepted) { activeGestures.remove(gestureId); if(continuation.isActive)continuation.resume(false) }
+                }
+            } ?: false
+        }
 
     fun inputText(text: String, clearFirst: Boolean = false): Boolean {
         val root = rootInActiveWindow ?: return false
