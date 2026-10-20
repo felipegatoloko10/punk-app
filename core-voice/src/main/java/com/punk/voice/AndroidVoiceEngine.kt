@@ -81,7 +81,7 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
         generation++
         recognitionTimeout?.let { handler.removeCallbacks(it) }; recognitionTimeout = null
         runCatching { recognizer?.destroy() }; recognizer = null
-        listening = false; _amplitude.value = 0f; releaseFocus()
+        listening = false; _amplitude.value = 0f
     }
     private fun finishUtterance(id: String?, error: String?) {
         if (id == null || id != utteranceId) return
@@ -100,8 +100,8 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
     fun startListeningWithCallbacks(onPartial: (String) -> Unit, onFinal: (String) -> Unit, onError: ((String) -> Unit)? = null) {
         main {
             if (destroyed) { onError?.invoke("Motor de voz encerrado"); return@main }
+            if (listening || recognizer != null) return@main
             stopSpeaking()
-            cancelListening()
             val available = SpeechRecognizer.isRecognitionAvailable(context)
             _availability.value = _availability.value.copy(recognitionAvailable = available)
             if (!available) {
@@ -112,10 +112,8 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
                 val error = "Conceda permissão de microfone ao PUNK."
                 _status.value = VoiceStatus.Error(SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS, error); onError?.invoke(error); return@main
             }
-            if (!focus()) { val error = "Áudio ocupado por outro aplicativo"; _status.value = VoiceStatus.Error(-1,error); onError?.invoke(error); return@main }
             try {
                 val currentGeneration = ++generation
-                recognizer?.destroy()
                 recognizer = SpeechRecognizer.createSpeechRecognizer(context.applicationContext).apply {
                     setRecognitionListener(object : RecognitionListener {
                         private fun current() = currentGeneration == generation && !destroyed
@@ -127,7 +125,7 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
                         override fun onError(error: Int) {
                             if (!current()) return
                             finishRecognition()
-                            val message = getErrorMessage(error)
+                            val message = "${getErrorMessage(error)} (código $error)"
                             _status.value = VoiceStatus.Error(error,message); onError?.invoke(message)
                         }
                         override fun onResults(results: Bundle?) {
@@ -146,8 +144,10 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
                     startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                         putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
                         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                        putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
                     })
                 }
                 listening = true
@@ -160,8 +160,8 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
                     }
                 }.also { handler.postDelayed(it,45000) }
             } catch (_: Exception) {
-                listening = false; releaseFocus()
-                val error = "Não foi possível iniciar reconhecimento de voz"
+                finishRecognition()
+                val error = "Não foi possível iniciar o serviço de reconhecimento de voz"
                 _status.value = VoiceStatus.Error(-1,error); onError?.invoke(error)
             }
         }
@@ -171,7 +171,6 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
         main {
             runCatching { recognizer?.cancel() }; finishRecognition()
             if (!speaking) _status.value = VoiceStatus.Idle
-            releaseFocus()
         }
     }
     override suspend fun speak(text: String, onDone: () -> Unit) { speakText(text,onDone) }
@@ -200,10 +199,16 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
     }
     private fun getErrorMessage(code: Int): String = when(code) {
         SpeechRecognizer.ERROR_AUDIO -> "Erro de áudio"
+        SpeechRecognizer.ERROR_CLIENT -> "O serviço de voz recusou a sessão"
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permissão de microfone ausente"
         SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Rede indisponível para reconhecimento de voz"
         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Nenhuma fala reconhecida"
         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Serviço de voz ocupado"
+        SpeechRecognizer.ERROR_SERVER -> "Falha no serviço de reconhecimento"
+        SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> "Serviço de reconhecimento desconectado"
+        SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> "Muitas tentativas de reconhecimento em sequência"
+        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED -> "Português do Brasil não é aceito pelo serviço de voz"
+        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "O pacote de voz pt-BR não está instalado"
         else -> "Falha no reconhecimento ($code)"
     }
 }

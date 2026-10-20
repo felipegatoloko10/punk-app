@@ -55,7 +55,8 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
     var liveMode by remember { mutableStateOf(true) }
     var heardReply by remember { mutableStateOf(false) }
     var permission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) }
-    val listening=status is VoiceStatus.Listening || status is VoiceStatus.Ready
+    val listening=status is VoiceStatus.Listening
+    val preparing=status is VoiceStatus.Ready || status is VoiceStatus.Processing
     val speaking=status is VoiceStatus.Speaking
     val latest=messages.lastOrNull { it.role=="assistant" && it.ts>=enteredAt }
     val latestUser=messages.lastOrNull { it.role=="user" && it.ts>=enteredAt }
@@ -80,7 +81,6 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
         permission=granted
         if(granted)listen() else error="O microfone está desativado. Você também pode conversar por texto."
     }
-    LaunchedEffect(Unit) { if(permission && !busy)listen() }
     LaunchedEffect(status,busy,permission,active,liveMode) {
         if(status is VoiceStatus.Speaking) heardReply=true
         if(heardReply && status is VoiceStatus.Idle && !busy && permission && active && liveMode) {
@@ -129,9 +129,9 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
                 selected=liveMode,
                 onClick={
                     liveMode=!liveMode
-                    if(!liveMode) engine.cancelListening() else if(permission && !busy && !speaking) listen()
+                    if(!liveMode) engine.cancelListening()
                 },
-                label={Text(if(liveMode)"LIVE ATIVO · conversa contínua" else "LIVE PAUSADO")},
+                label={Text(if(liveMode)"LIVE ATIVO · toque em Falar" else "LIVE PAUSADO")},
                 leadingIcon={PunkIcon(if(liveMode)PunkGlyph.Mic else PunkGlyph.Stop,modifier=Modifier.size(18.dp))}
             )
             val power by animateFloatAsState(if(listening)amplitude.coerceIn(0f,1f) else if(speaking).35f else .05f,label="voice amplitude")
@@ -147,14 +147,19 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
                 else PunkIcon(PunkGlyph.Mic,tint=PunkNeonCyan,modifier=Modifier.size(38.dp))
             }
             Text(
-                when { displayError!=null -> stringResource(R.string.punk_voice_retry); !permission -> stringResource(R.string.punk_voice_enable); listening -> stringResource(R.string.punk_voice_listening); speaking -> stringResource(R.string.punk_voice_speaking); busy -> stringResource(R.string.punk_voice_working); else -> stringResource(R.string.punk_voice_ready) },
+                when { displayError!=null -> stringResource(R.string.punk_voice_retry); !permission -> stringResource(R.string.punk_voice_enable); listening -> stringResource(R.string.punk_voice_listening); preparing -> "Preparando reconhecimento…"; speaking -> stringResource(R.string.punk_voice_speaking); busy -> stringResource(R.string.punk_voice_working); else -> stringResource(R.string.punk_voice_ready) },
                 style=MaterialTheme.typography.headlineMedium,
                 modifier=Modifier.semantics { liveRegion=LiveRegionMode.Polite }
             )
             if(!permission)Text(stringResource(R.string.punk_voice_permission),style=MaterialTheme.typography.bodyMedium,color=PunkTextSecondary)
             displayError?.let { Text(it,style=MaterialTheme.typography.bodyMedium,color=PunkNeonMagenta) }
-            if(!permission && error!=null)TextButton(onClick={
-                runCatching { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}"))) }
+            if(displayError!=null)TextButton(onClick={
+                runCatching {
+                    context.startActivity(
+                        if(!permission)Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}"))
+                        else Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+                    )
+                }
             },modifier=Modifier.heightIn(min=48.dp)) { Text(stringResource(R.string.punk_voice_settings)) }
             if(transcript.isNotBlank() || latest!=null)PunkPanel {
                 if(transcript.isNotBlank()) {
@@ -180,13 +185,13 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
                     when {
                         !permission -> request.launch(Manifest.permission.RECORD_AUDIO)
                         busy || speaking -> { liveMode=false; vm.stop() }
-                        listening -> { liveMode=false; engine.cancelListening() }
+                        listening || preparing -> { liveMode=false; engine.cancelListening() }
                         else -> { liveMode=true; listen() }
                     }
                 },modifier=Modifier.weight(1f).heightIn(min=52.dp)) {
-                    PunkIcon(if(busy || speaking || listening)PunkGlyph.Stop else PunkGlyph.Mic)
+                    PunkIcon(if(busy || speaking || listening || preparing)PunkGlyph.Stop else PunkGlyph.Mic)
                     Spacer(Modifier.width(8.dp))
-                    Text(when { !permission -> stringResource(R.string.punk_activate); busy || speaking -> stringResource(R.string.punk_stop); listening -> stringResource(R.string.punk_pause); else -> stringResource(R.string.punk_speak) })
+                    Text(when { !permission -> stringResource(R.string.punk_activate); busy || speaking -> stringResource(R.string.punk_stop); listening || preparing -> stringResource(R.string.punk_pause); else -> stringResource(R.string.punk_speak) })
                 }
             }
         }

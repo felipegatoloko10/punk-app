@@ -8,6 +8,8 @@
 - Eventos de ferramentas do Hermes agora incluem entrada, resultado, mensagem e erro quando disponíveis. Campos que parecem conter senha, token, cookie, credencial ou segredo são ocultados e o tamanho é limitado.
 - Eventos `tool.started` e `tool.completed` com o mesmo `tool_call_id` são unidos em um único histórico detalhado, preservando entrada e resultado.
 - O modo de voz virou uma conversa contínua por turnos: ouvir → enviar ao Hermes → falar a resposta → voltar a ouvir. Há um controle visível para pausar/retomar o modo Live.
+- O botão **Falar** não é mais disputado por uma escuta automática ao abrir a tela. A sessão agora informa o código de erro do Android e não exige foco de áudio exclusivo para reconhecer a fala.
+- A tela Dispositivos separa a depuração USB local do vínculo ADB real com o computador. O bridge consulta o Platform Tools periodicamente e não envia o serial do aparelho ao app.
 
 ## Diagnóstico da paridade com o Telegram
 
@@ -45,6 +47,14 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 - Adicionar endpoint autenticado de diagnóstico do Hermes e cartão “Modelo e capacidades” no app.
 - Reconciliar também atividades remotas após reconexão, com histórico de execução fornecido pelo bridge.
 - Criar testes de migração Room em dispositivo/emulador e teste ponta a ponta com um Hermes real de homologação.
+- Validar no S23 Ultra o serviço de reconhecimento Samsung/Google e registrar o código retornado pelo Android caso ainda haja recusa.
+
+### P0 — percepção e automação robusta no Android
+
+- `ui_dump` estruturado e sanitizado a partir de `AccessibilityNodeInfo`, com texto, id, classe, bounds e ações disponíveis.
+- `find_and_click` por texto/id com espera, scroll limitado, confirmação do alvo e evidência do resultado. É a melhoria com maior impacto para abandonar coordenadas frágeis.
+- Eventos de acessibilidade em stream com limitação de frequência e escopo por sessão, permitindo reagir a mudança de janela, diálogo e app ativo sem polling constante.
+- Abrir apps, deep links, rotas e folhas de compartilhamento por intents validadas. Intents arbitrárias devem continuar bloqueadas ou exigir confirmação.
 
 ### P1 — chat de nível profissional
 
@@ -74,6 +84,14 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 - “Enviar para o Punk” no menu Compartilhar do Android para páginas, imagens, PDFs e texto selecionado.
 - Painel de saúde do ecossistema: PC, bridge, Hermes, memória, modelo, latência e ferramentas.
 
+### Avaliação das sugestões adicionais
+
+- **Alta prioridade:** árvore de UI, busca/clique sem coordenadas, eventos de acessibilidade, OCR local, intents e transferência de arquivos. Esses recursos aumentam muito a confiabilidade e podem retornar evidências verificáveis.
+- **Úteis com consentimento explícito:** ler/responder notificações, contatos, agenda, chamadas e SMS. Devem ter autorização por ferramenta, campos sensíveis ocultos e histórico auditável.
+- **Úteis, mas dependentes do aparelho:** controles de Wi-Fi, Bluetooth, brilho, volume, rotação e economia via Shizuku. Cada comando precisa detectar suporte real e nunca prometer sucesso só porque o shell não gerou erro.
+- **Alto risco:** instalar/desinstalar apps, limpar dados, revogar permissões e desbloquear com PIN. Devem ficar fora do modo autônomo por padrão. O PIN não deve ser armazenado nem automatizado antes de um modelo de ameaça e consentimento específico.
+- **Custo de bateria/privacidade:** wake word permanente e escuta com a tela apagada precisam de sessão visível, notificação persistente, opção de desligar e medição em aparelho real. Vosk/Porcupine não devem ser adicionados só para simular “Live”.
+
 ### P2 — atividades como observabilidade real
 
 - Linha do tempo hierárquica: pedido → execução Hermes → chamadas de ferramenta → resultado.
@@ -98,11 +116,11 @@ Nesse estágio, a recomendação é manter conteúdo sensível e credenciais for
 
 ## Verificação executada
 
-- `python -m unittest discover -s tests -q`: 14 testes, todos aprovados.
+- `python -m unittest discover -s tests -q`: 16 testes, todos aprovados.
 - `:feature-chat:testDebugUnitTest :app:compileDebugKotlin`: aprovado.
 - `:app:assembleDebug`: aprovado.
 - `git diff --check`: sem erros de whitespace.
 
-APK gerado em `app/build/outputs/apk/debug/app-debug.apk`.
+APK de distribuição gerado em `apk/Punk-3.1.1.apk`.
 
 Referência usada para a migração e consultas assíncronas do Room: [documentação oficial Android](https://developer.android.com/training/data-storage/room/accessing-data).

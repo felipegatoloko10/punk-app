@@ -105,8 +105,10 @@ class BridgeService : Service() {
                 onState = { s -> updateState(s); updateNotificationFor(s) },
                 onMessage = { msg ->
                     val payload = msg.payload as? JsonObject
-                    if (msg.type == BridgeTypes.HELLO_ACK) {
+                    if (msg.type == BridgeTypes.HELLO_ACK || msg.type == "health_update") {
                         _health.value = payload?.get("health") as? JsonObject ?: JsonObject(emptyMap())
+                    }
+                    if (msg.type == BridgeTypes.HELLO_ACK) {
                         payload?.get("supervised")?.jsonPrimitive?.booleanOrNull?.let { mode ->
                             if(BridgePrefs.supervised(this@BridgeService) && !mode) ControlPolicy.setSupervised(true)
                             else { ControlPolicy.applyMode(mode); BridgePrefs.setSupervised(this@BridgeService,mode) }

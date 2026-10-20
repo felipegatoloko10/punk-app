@@ -32,6 +32,40 @@ TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
 
 SENSITIVE_TOOL_FIELDS = ('authorization', 'api_key', 'apikey', 'cookie', 'credential', 'password', 'secret', 'token')
 
+
+def adb_executable():
+    """Find adb without requiring it to be present in the bridge process PATH."""
+    executable = 'adb.exe' if os.name == 'nt' else 'adb'
+    candidates = [shutil.which('adb')]
+    for variable in ('ANDROID_SDK_ROOT', 'ANDROID_HOME'):
+        if os.environ.get(variable):
+            candidates.append(str(Path(os.environ[variable]) / 'platform-tools' / executable))
+    home = Path.home()
+    candidates.extend([
+        str(home / 'android-sdk' / 'platform-tools' / executable),
+        str(home / 'AppData' / 'Local' / 'Android' / 'Sdk' / 'platform-tools' / executable),
+        str(home / 'Library' / 'Android' / 'sdk' / 'platform-tools' / executable),
+    ])
+    return next((candidate for candidate in candidates if candidate and Path(candidate).is_file()), None)
+
+
+def parse_adb_devices(output):
+    """Return a privacy-safe summary of `adb devices` output."""
+    states = []
+    for line in output.splitlines()[1:]:
+        parts = line.strip().split()
+        if len(parts) >= 2 and not line.startswith('*'):
+            states.append(parts[1].lower())
+    if 'device' in states:
+        state = 'connected'
+    elif 'unauthorized' in states:
+        state = 'unauthorized'
+    elif 'offline' in states:
+        state = 'offline'
+    else:
+        state = 'disconnected'
+    return {'adb': state == 'connected', 'adbState': state, 'adbDevices': len(states)}
+
 def tool_event_detail(event, kind):
     """Build a useful activity description without leaking credentials or huge payloads."""
     def clean(value, depth=0):
@@ -177,7 +211,29 @@ class Bridge:
                 available = res.status == 200
         except (aiohttp.ClientError, asyncio.TimeoutError):
             pass
-        return {'bridge': True, 'hermes': available, 'policy': time.time() - self.policy_seen < 35}
+        return {'bridge': True, 'hermes': available, 'policy': time.time() - self.policy_seen < 35,
+                **(await self.adb_health())}
+
+    async def adb_health(self):
+        executable = adb_executable()
+        if not executable:
+            return {'adb': False, 'adbState': 'unavailable', 'adbDevices': 0}
+        process = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                executable, 'devices', '-l',
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=3)
+            if process.returncode != 0:
+                return {'adb': False, 'adbState': 'error', 'adbDevices': 0}
+            return parse_adb_devices(stdout.decode('utf-8', errors='replace'))
+        except (OSError, asyncio.TimeoutError):
+            if process and process.returncode is None:
+                process.kill()
+                await process.communicate()
+            return {'adb': False, 'adbState': 'error', 'adbDevices': 0}
 
     def hermes_headers(self, **extra):
         return {'Authorization': 'Bearer ' + self.config.get('hermesToken', ''), **extra}
@@ -261,6 +317,8 @@ class Bridge:
         kind, p = frame.get('type'), frame.get('payload') or {}
         if kind in ('ping', 'heartbeat'):
             await self.send(device, 'pong', {})
+        elif kind == 'status_request':
+            await self.send(device, 'health_update', {'health': await self.health()})
         elif kind == 'chat':
             if self.switching:
                 raise web.HTTPConflict(reason='Control mode transition in progress')

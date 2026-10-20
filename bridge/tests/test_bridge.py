@@ -12,7 +12,7 @@ from aiohttp import web
 import aiohttp
 from aiohttp.test_utils import TestClient, TestServer
 
-from server import Bridge, certificate, safe_preview
+from server import Bridge, certificate, parse_adb_devices, safe_preview
 from storage import Store
 
 
@@ -46,6 +46,24 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get('/api/status')).status, 401)
         self.assertEqual((await self.internal.get('/api/status', headers=self.auth)).status, 401)
         self.assertEqual((await self.internal.get('/api/status', headers=self.internal_auth)).status, 200)
+
+    def test_adb_device_states_are_reported_without_identifiers(self):
+        connected = parse_adb_devices('List of devices attached\nR58M123 device product:x model:Phone transport_id:1\n')
+        waiting = parse_adb_devices('List of devices attached\nR58M123 unauthorized usb:1-2 transport_id:1\n')
+        self.assertEqual(connected, {'adb': True, 'adbState': 'connected', 'adbDevices': 1})
+        self.assertEqual(waiting, {'adb': False, 'adbState': 'unauthorized', 'adbDevices': 1})
+        self.assertNotIn('R58M123', json.dumps(connected))
+
+    async def test_status_request_refreshes_adb_health(self):
+        ws = await self.socket()
+        refreshed = {'bridge': True, 'hermes': True, 'policy': True,
+                     'adb': True, 'adbState': 'connected', 'adbDevices': 1}
+        with patch.object(self.bridge, 'health', return_value=refreshed):
+            await ws.send_json({'id': 'status-1', 'type': 'status_request', 'payload': {}})
+            message = await ws.receive_json()
+        self.assertEqual(message['type'], 'health_update')
+        self.assertEqual(message['payload']['health'], refreshed)
+        await ws.close()
 
     async def test_pairing_once_expired_and_hash_only(self):
         code = self.store.pairing_code()

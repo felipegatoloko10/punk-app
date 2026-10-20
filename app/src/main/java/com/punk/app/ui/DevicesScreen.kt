@@ -67,6 +67,7 @@ fun DevicesScreen(vm:ChatViewModel,onSettings:()->Unit) {
                 "notifications" to PunkNotificationListener.isEnabled(),
                 "postNotifications" to (Build.VERSION.SDK_INT<33 || allowed(Manifest.permission.POST_NOTIFICATIONS)),
                 "shizuku" to runCatching { Shizuku.pingBinder() && Shizuku.checkSelfPermission()==PackageManager.PERMISSION_GRANTED }.getOrDefault(false),
+                "adbDebugging" to runCatching { Settings.Global.getInt(context.contentResolver,Settings.Global.ADB_ENABLED,0)==1 }.getOrDefault(false),
                 "microphone" to allowed(Manifest.permission.RECORD_AUDIO),
                 "camera" to allowed(Manifest.permission.CAMERA),
                 "location" to (allowed(Manifest.permission.ACCESS_FINE_LOCATION)||allowed(Manifest.permission.ACCESS_COARSE_LOCATION)),
@@ -97,6 +98,10 @@ fun DevicesScreen(vm:ChatViewModel,onSettings:()->Unit) {
                         HealthRow("Agente no computador",(health["hermes"] as? JsonPrimitive)?.booleanOrNull)
                         HealthRow("Controle integrado",(health["policy"] as? JsonPrimitive)?.booleanOrNull)
                     }
+                    AdbHealthRow(
+                        state=if(connected)(health["adbState"] as? JsonPrimitive)?.content else null,
+                        count=(health["adbDevices"] as? JsonPrimitive)?.content?.toIntOrNull()
+                    )
                     Text(if(connected)"Envie pedidos pela conversa para usar os recursos disponíveis no seu PC." else "Conecte o bridge do PC para usar seu agente a partir do celular.",style=MaterialTheme.typography.bodyMedium,color=PunkTextSecondary)
                     OutlinedButton(onClick=onSettings,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { PunkIcon(PunkGlyph.Link);Spacer(Modifier.width(8.dp));Text(if(connected)stringResource(R.string.punk_manage_connection) else stringResource(R.string.punk_connect_pc)) }
                 }
@@ -121,6 +126,7 @@ fun DevicesScreen(vm:ChatViewModel,onSettings:()->Unit) {
                             }
                         } catch(_:Throwable) { scope.launch { snack.showSnackbar("Abra o Shizuku e inicie o serviço antes de autorizar o Punk.") } }
                     }
+                    CapabilityRow(PunkGlyph.Link,"Depuração USB","ADB ativado no Android; a autorização do PC aparece acima",capabilities["adbDebugging"]==true) { open(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
                     CapabilityRow(PunkGlyph.Notification,"Notificações","Consultar notificações dos apps",capabilities["notifications"]==true) { open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
                     CapabilityRow(PunkGlyph.Mic,"Microfone","Pedidos e conversa por voz",capabilities["microphone"]==true) { requestPermissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO)) }
                     CapabilityRow(PunkGlyph.Camera,"Câmera","Capturas solicitadas na conversa",capabilities["camera"]==true) { requestPermissions.launch(arrayOf(Manifest.permission.CAMERA)) }
@@ -168,6 +174,23 @@ private fun HealthRow(title:String,ready:Boolean?) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
         Text(title,style=MaterialTheme.typography.bodySmall,color=PunkTextSecondary,modifier=Modifier.weight(1f))
         Text(when(ready) { true -> "Pronto";false -> "Indisponível";null -> "Verificando" },style=MaterialTheme.typography.labelMedium,color=when(ready) { true -> PunkNeonGreen;false -> PunkNeonMagenta;null -> PunkTextSecondary })
+    }
+}
+
+@Composable
+private fun AdbHealthRow(state:String?,count:Int?) {
+    val (label,active)=when(state) {
+        "connected" -> (if((count ?: 0)>1)"Conectado · $count aparelhos" else "Conectado e autorizado") to true
+        "unauthorized" -> "Aguardando autorização no celular" to false
+        "offline" -> "Detectado, mas offline" to false
+        "disconnected" -> "Nenhum aparelho no PC" to false
+        "unavailable" -> "ADB não encontrado no PC" to false
+        "error" -> "Falha ao consultar o ADB" to false
+        else -> "Conecte o bridge para verificar" to null
+    }
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
+        Text("ADB com o PC",style=MaterialTheme.typography.bodySmall,color=PunkTextSecondary,modifier=Modifier.weight(1f))
+        Text(label,style=MaterialTheme.typography.labelMedium,color=when(active) { true -> PunkNeonGreen;false -> PunkNeonMagenta;null -> PunkTextSecondary })
     }
 }
 

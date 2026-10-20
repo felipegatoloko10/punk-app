@@ -1,6 +1,7 @@
 package com.punk.bridge
 
 import android.content.Context
+import android.os.Build
 import kotlinx.coroutines.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
@@ -26,6 +27,7 @@ class BridgeClient(
     private var attempt = 0
     private var reconnectJob: Job? = null
     private var handshakeJob: Job? = null
+    private var statusJob: Job? = null
     private val jobs = ConcurrentHashMap<String, Job>()
     private val results = ConcurrentHashMap<String, ToolResult>()
     private val calls = context.getSharedPreferences("punk_executed_calls_v3", Context.MODE_PRIVATE)
@@ -61,7 +63,7 @@ class BridgeClient(
     }
     fun close() {
         closed = true; authenticated = false
-        reconnectJob?.cancel(); handshakeJob?.cancel(); cancelTools(acknowledge=false)
+        reconnectJob?.cancel(); handshakeJob?.cancel(); statusJob?.cancel(); cancelTools(acknowledge=false)
         ws?.close(1000, "Encerrado")
         client.connectionPool.evictAll(); client.dispatcher.executorService.shutdown()
         onState(BridgeState.Disconnected)
@@ -70,7 +72,8 @@ class BridgeClient(
         override fun onOpen(webSocket: WebSocket, response: Response) {
             if (closed) { webSocket.close(1000, "Encerrado"); return }
             send(BridgeTypes.HELLO, buildJsonObject {
-                put("client", "punk-android"); put("version", "3.0.0"); put("protocolVersion", 3)
+                put("client", "punk-android"); put("version", "3.1.1"); put("protocolVersion", 3)
+                put("deviceModel", Build.MODEL); put("androidVersion", Build.VERSION.RELEASE)
                 put("deviceId", config.deviceId); put("lastSeq", BridgePrefs.lastSeq(context)); put("tools", catalog)
             })
             handshakeJob = scope.launch { delay(10_000); if (!authenticated) { onState(BridgeState.Failed("O PC não confirmou o pareamento")); webSocket.cancel() } }
@@ -83,6 +86,13 @@ class BridgeClient(
                     onState(BridgeState.Failed("Bridge incompatível ou acesso recusado")); closed = true; webSocket.close(1008,"Autenticação necessária"); return
                 }
                 authenticated = true; attempt = 0; handshakeJob?.cancel()
+                statusJob?.cancel()
+                statusJob = scope.launch {
+                    while (isActive && authenticated && !closed) {
+                        delay(10_000)
+                        send("status_request")
+                    }
+                }
                 onState(BridgeState.Connected); onMessage(msg); return
             }
             if (!authenticated) return
@@ -119,13 +129,14 @@ class BridgeClient(
         private fun sendResult(result: ToolResult) { send(BridgeTypes.TOOL_RESULT, json.encodeToJsonElement(ToolResult.serializer(),result)) }
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (closed) return
-            authenticated = false; handshakeJob?.cancel(); cancelTools(acknowledge=false); BridgeService.stopLocalTools?.invoke()
+            authenticated = false; handshakeJob?.cancel(); statusJob?.cancel(); cancelTools(acknowledge=false); BridgeService.stopLocalTools?.invoke()
             if (response?.code == 401 || response?.code == 403) { closed = true; onState(BridgeState.Failed("Acesso revogado. Faça o pareamento novamente.")); return }
             onState(BridgeState.Failed("PC indisponível. Tentando reconectar…")); scheduleReconnect()
         }
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code,reason) }
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             authenticated = false; handshakeJob?.cancel()
+            statusJob?.cancel()
             if (closed) return
             cancelTools(acknowledge=false); BridgeService.stopLocalTools?.invoke()
             onState(BridgeState.Disconnected); scheduleReconnect()
