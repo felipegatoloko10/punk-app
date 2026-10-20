@@ -33,10 +33,16 @@ object ChatRepository {
         if(started) return
         started=true; context=ctx.applicationContext
         _selected.value=context.getSharedPreferences("punk_chat_ui",0).getString("conversation","default") ?: "default"
-        db=Room.databaseBuilder(context,ChatDb::class.java,"punk_chat_v3.db").build()
+        db=Room.databaseBuilder(context,ChatDb::class.java,"punk_chat_v3.db")
+            .addMigrations(ChatDb.MIGRATION_1_2)
+            .build()
         BridgeService.messageConsumer=::accept
         scope.launch {
             db.dao().interruptStale()
+            db.dao().interruptStaleActivity(
+                System.currentTimeMillis(),
+                "O app foi reiniciado ou perdeu a sessão antes de receber a confirmação final. A execução não está mais sendo acompanhada."
+            )
             db.dao().insertConv(Conversation(_selected.value,"Nova conversa"))
             _ready.value=true
             for(event in events) {
@@ -106,8 +112,18 @@ object ChatRepository {
             }
             "task_event" -> {
                 val ts=p["ts"]?.jsonPrimitive?.doubleOrNull ?: (System.currentTimeMillis()/1000.0)
-                db.dao().insertEvent(ActionEvent(p["id"]?.jsonPrimitive?.content ?: event.id,p["title"]?.jsonPrimitive?.content ?: "Tarefa",
-                    p["detail"]?.jsonPrimitive?.content ?: "",p["device"]?.jsonPrimitive?.content ?: "PC",p["status"]?.jsonPrimitive?.content ?: "running",if(ts<1e12) (ts*1000).toLong() else ts.toLong()))
+                val updatedAt=if(ts<1e12) (ts*1000).toLong() else ts.toLong()
+                val id=p["id"]?.jsonPrimitive?.content ?: event.id
+                val previous=db.dao().event(id)
+                val incomingDetail=p["detail"]?.jsonPrimitive?.content.orEmpty()
+                val detail=when {
+                    incomingDetail.isBlank() -> previous?.detail.orEmpty()
+                    previous?.detail.isNullOrBlank() || previous?.detail==incomingDetail -> incomingDetail
+                    else -> previous!!.detail+"\n\n"+incomingDetail
+                }
+                db.dao().insertEvent(ActionEvent(id,p["title"]?.jsonPrimitive?.content ?: "Tarefa",
+                    detail,p["device"]?.jsonPrimitive?.content ?: "PC",
+                    p["status"]?.jsonPrimitive?.content ?: "running",previous?.ts ?: updatedAt,updatedAt))
             }
             "file_received" -> {
                 val cid=p["conversationId"]?.jsonPrimitive?.content ?: selected.value

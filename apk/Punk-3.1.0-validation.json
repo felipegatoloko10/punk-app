@@ -1,0 +1,13 @@
+{
+  "apk": "Punk-3.1.0.apk",
+  "versionName": "3.1.0",
+  "versionCode": 25,
+  "bytes": 10120829,
+  "sha256": "85b1febb53a88d91f7c5df64aa704d41264d874463caa61946dd3a7370c5602c",
+  "signerSha256": "c315805a680bab539ccc49ee7ea148074f96617431278d07a0b638d96e438aaf",
+  "androidTests": 23,
+  "testFailures": 0,
+  "bridgeTests": 14,
+  "lintBlockingErrors": 0,
+  "physicalDeviceTested": false
+}

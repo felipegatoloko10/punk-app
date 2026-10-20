@@ -37,6 +37,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.punk.chat.ChatViewModel
 import com.punk.voice.AndroidVoiceEngine
 import com.punk.voice.VoiceStatus
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +52,8 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
     var error by remember { mutableStateOf<String?>(null) }
     var submitted by remember { mutableStateOf(false) }
     var active by remember { mutableStateOf(true) }
+    var liveMode by remember { mutableStateOf(true) }
+    var heardReply by remember { mutableStateOf(false) }
     var permission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) }
     val listening=status is VoiceStatus.Listening || status is VoiceStatus.Ready
     val speaking=status is VoiceStatus.Speaking
@@ -78,6 +81,14 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
         if(granted)listen() else error="O microfone está desativado. Você também pode conversar por texto."
     }
     LaunchedEffect(Unit) { if(permission && !busy)listen() }
+    LaunchedEffect(status,busy,permission,active,liveMode) {
+        if(status is VoiceStatus.Speaking) heardReply=true
+        if(heardReply && status is VoiceStatus.Idle && !busy && permission && active && liveMode) {
+            heardReply=false
+            delay(350)
+            if(active && liveMode && !vm.busy.value) listen()
+        }
+    }
     DisposableEffect(engine,context) {
         val lifecycle=(context as? LifecycleOwner)?.lifecycle
         active=true
@@ -114,6 +125,15 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
                 }
                 IconButton(onClick=onDismiss) { PunkIcon(PunkGlyph.Close,stringResource(R.string.punk_voice_close)) }
             }
+            FilterChip(
+                selected=liveMode,
+                onClick={
+                    liveMode=!liveMode
+                    if(!liveMode) engine.cancelListening() else if(permission && !busy && !speaking) listen()
+                },
+                label={Text(if(liveMode)"LIVE ATIVO · conversa contínua" else "LIVE PAUSADO")},
+                leadingIcon={PunkIcon(if(liveMode)PunkGlyph.Mic else PunkGlyph.Stop,modifier=Modifier.size(18.dp))}
+            )
             val power by animateFloatAsState(if(listening)amplitude.coerceIn(0f,1f) else if(speaking).35f else .05f,label="voice amplitude")
             Box(Modifier.size(180.dp),contentAlignment=Alignment.Center) {
                 Canvas(Modifier.fillMaxSize()) {
@@ -159,9 +179,9 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
                 Button(onClick={
                     when {
                         !permission -> request.launch(Manifest.permission.RECORD_AUDIO)
-                        busy || speaking -> vm.stop()
-                        listening -> engine.cancelListening()
-                        else -> listen()
+                        busy || speaking -> { liveMode=false; vm.stop() }
+                        listening -> { liveMode=false; engine.cancelListening() }
+                        else -> { liveMode=true; listen() }
                     }
                 },modifier=Modifier.weight(1f).heightIn(min=52.dp)) {
                     PunkIcon(if(busy || speaking || listening)PunkGlyph.Stop else PunkGlyph.Mic)

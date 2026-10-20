@@ -1,14 +1,14 @@
-# Punk · 3.0.0
+# Punk · 3.1.0
 
 **Seu agente no computador e no Android, em uma única conversa.**
 
-[Baixar APK](apk/Punk-3.0.0.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.0.0-validation.json)
+[Baixar APK](apk/Punk-3.1.0.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.1.0-validation.json) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
 
 Aplicativo Android nativo para conversar com o seu Punk e usar as ferramentas do Hermes no computador e no celular. Interface em português, com fundo grafite, destaque ciano e três áreas: **Conversa**, **Dispositivos** e **Atividade**.
 
 ## Instalar no celular
 
-O APK está em [`apk/Punk-3.0.0.apk`](apk/Punk-3.0.0.apk), versão 3.0.0, código 24, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e mantém a chave existente para permitir atualização dos APKs fornecidos. Antes de atualizar outro APK, confira se a assinatura é compatível. Instalar por atualização preserva os dados; a assinatura efetiva no S23 ainda precisa ser conferida.
+O APK está em [`apk/Punk-3.1.0.apk`](apk/Punk-3.1.0.apk), versão 3.1.0, código 25, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura do APK 3.0.0, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
 
 1. Copie o APK para o S23 Ultra e instale.
 2. No PC, execute `bridge/INICIAR-PUNK.ps1` para iniciar o novo bridge.
@@ -23,8 +23,9 @@ Em uma instalação nova no computador, siga primeiro a [provisão do bridge](br
 ## O que foi implementado
 
 - Conversa com streaming, Markdown, código copiável, múltiplas conversas, histórico persistente, busca, exportação e repetição explícita de pedidos interrompidos.
-- Voz na mesma conversa, com transcrição e STT/TTS Android em pt-BR. Respostas antigas não são reproduzidas ao reabrir a tela.
-- Cartões de dispositivos e permissões com estado real, histórico de ações e distinção entre comando aceito e resultado confirmado.
+- Modo Live por turnos na mesma conversa: escuta, envia ao Hermes, fala a resposta e reabre o microfone automaticamente. O usuário pode pausar e retomar o ciclo a qualquer momento.
+- Cartões de dispositivos e permissões com estado real. A aba Atividade agora mostra duração, origem, status técnico, ID, última atualização, entradas e resultados sanitizados das ferramentas.
+- Reconciliação de atividades órfãs: execuções que ficaram sem confirmação após reinício ou perda de sessão deixam de aparecer eternamente como “em andamento”.
 - Autonomia por padrão. O modo supervisionado pede aprovação antes de ferramentas de alteração ou comportamento indeterminado; vale para o canal mobile, sem alterar a política dos outros canais.
 - Comandos explícitos: `/supervisionado`, `/autonomo`, `/parar`; na voz, “Punk, peça confirmação antes de agir”, “Punk, volte ao modo autônomo” e “Punk, para tudo”.
 - Parada de execuções locais e solicitação de cancelamento remoto. A confirmação remota espera as tarefas e os recursos encerrarem; falha de parada permanece visível.
@@ -34,7 +35,7 @@ Em uma instalação nova no computador, siga primeiro a [provisão do bridge](br
 
 ## Integração com o agente
 
-O bridge usa a API nativa do Hermes (`/v1/runs` + SSE retomável), no perfil `punk-mobile`. A provisão inicializa esse perfil a partir da identidade, configuração, skills e plugins selecionados do agente existente, com histórico próprio e os mesmos serviços externos de memória configurados. Mudanças futuras nos arquivos de personalidade do perfil original precisam ser sincronizadas explicitamente.
+O bridge usa a API nativa do Hermes (`/v1/runs` + SSE retomável), no perfil `punk-mobile`. A provisão inicializa esse perfil a partir da identidade, configuração, skills e plugins selecionados do agente existente, com histórico próprio e os mesmos serviços externos de memória configurados. Na instalação validada, o perfil padrão (Telegram) e o `punk-mobile` usam o mesmo provedor `nine_router`, modelo `cx/gpt-5.6-sol`, endpoint de inferência e acesso amplo às ferramentas. Mudanças futuras de personalidade ou configuração ainda precisam ser sincronizadas explicitamente.
 
 O plugin `punk_control` aplica a política de execução independentemente do modo YOLO do Hermes. O bridge rejeita novos pedidos quando o componente de política não está saudável. Provisão e detalhes do protocolo: [`bridge/README.md`](bridge/README.md) e [`bridge/PROTOCOL.md`](bridge/PROTOCOL.md).
 
@@ -44,7 +45,7 @@ O plugin `punk_control` aplica a política de execução independentemente do mo
 
 O controle é limitado às permissões concedidas pelo Android, acessibilidade e Shizuku sem root, e aos acessos da sessão Windows do Hermes. Telas protegidas, dados privados de outros aplicativos, janelas elevadas e operações em segundo plano podem ser restritos. Captura de câmera/microfone exige o Punk visível nesta versão.
 
-A voz inicial usa os mecanismos instalados no Android. Wake word permanente, voz full-duplex, overlay e modos avançados de câmera ficam para evolução posterior. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
+O modo Live usa os mecanismos STT/TTS instalados no Android e funciona por turnos; ainda não é full-duplex e não interrompe a fala do assistente por voz. Wake word permanente, overlay e modos avançados de câmera ficam para evolução posterior. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
 
 Validação desta versão: **23 testes Android e 14 testes Python passaram**, release assinada e lint sem erros bloqueantes. Foram exercitados política, cancelamento, replay, contratos de ferramentas, privacidade e auditoria. Os testes do bridge usam TLS real e Hermes simulado. Também passou um teste separado com o Hermes local real: autenticação, envio de pedido e recebimento de `PUNK_OK` por streaming. As bibliotecas nativas do APK foram verificadas quanto ao alinhamento de 16 KB.
 
@@ -77,4 +78,4 @@ python -m unittest discover -s tests -v
 | `core-security` | Auditoria e integridade |
 | `bridge` | Servidor Python e plugin de integração com o Hermes |
 
-O histórico Git mantém as versões anteriores. Os APKs antigos na pasta `apk/` são históricos; use **Punk-3.0.0.apk** para esta versão.
+O histórico Git mantém as versões anteriores. Os APKs antigos na pasta `apk/` são históricos; use **Punk-3.1.0.apk** para esta versão.

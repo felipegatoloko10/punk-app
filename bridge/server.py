@@ -29,6 +29,35 @@ READ_TOOLS = frozenset({'read_file', 'search_files', 'list_directory', 'web_sear
                        'web_extract', 'vision_analyze', 'hindsight_recall',
                        'hindsight_reflect', 'hindsight_stats', 'tool_search', 'tool_describe'})
 TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
+
+SENSITIVE_TOOL_FIELDS = ('authorization', 'api_key', 'apikey', 'cookie', 'credential', 'password', 'secret', 'token')
+
+def tool_event_detail(event, kind):
+    """Build a useful activity description without leaking credentials or huge payloads."""
+    def clean(value, depth=0):
+        if depth > 3:
+            return '…'
+        if isinstance(value, dict):
+            return {str(k): ('[oculto]' if any(secret in str(k).lower() for secret in SENSITIVE_TOOL_FIELDS) else clean(v, depth + 1)) for k, v in list(value.items())[:20]}
+        if isinstance(value, list):
+            return [clean(v, depth + 1) for v in value[:20]]
+        text = str(value)
+        return text if len(text) <= 500 else text[:497] + '…'
+
+    state = 'Iniciada' if kind == 'tool.started' else 'Falhou' if event.get('error') else 'Concluída'
+    lines = [state + ' pelo Hermes.']
+    arguments = event.get('arguments', event.get('args', event.get('input')))
+    result = event.get('result', event.get('output'))
+    message = event.get('detail') or event.get('message')
+    if arguments not in (None, '', {}, []):
+        lines.append('Entrada: ' + json.dumps(clean(arguments), ensure_ascii=False, separators=(',', ':')))
+    if result not in (None, '', {}, []):
+        lines.append('Resultado: ' + json.dumps(clean(result), ensure_ascii=False, separators=(',', ':')))
+    if message:
+        lines.append('Detalhe: ' + str(clean(message)))
+    if event.get('error') and event.get('error') is not True:
+        lines.append('Erro: ' + str(clean(event.get('error'))))
+    return '\n'.join(lines)[:1800]
 SAFE_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,180}$')
 
 
@@ -354,7 +383,7 @@ class Bridge:
                                 self.store.message(device, cid, 'assistant:' + mid, 'assistant', output, 'running')
                                 await self.chunk(device, cid, mid, delta, runId=run_id)
                             elif kind.startswith('tool.'):
-                                await self.emit(device, 'task_event', {'id': str(event.get('tool_call_id') or run_id + ':' + str(seq)), 'title': str(event.get('tool') or event.get('tool_name') or 'Ferramenta'), 'detail': '', 'device': 'pc', 'status': 'failed' if event.get('error') else 'completed' if kind == 'tool.completed' else 'running', 'ts': time.time(), 'conversationId': cid})
+                                await self.emit(device, 'task_event', {'id': str(event.get('tool_call_id') or run_id + ':' + str(seq)), 'title': str(event.get('tool') or event.get('tool_name') or 'Ferramenta'), 'detail': tool_event_detail(event, kind), 'device': 'pc', 'status': 'failed' if event.get('error') else 'completed' if kind == 'tool.completed' else 'running', 'ts': time.time(), 'conversationId': cid})
                             elif kind.startswith('run.') and kind[4:] in TERMINAL:
                                 final_status = kind[4:]
                                 final = event.get('output')

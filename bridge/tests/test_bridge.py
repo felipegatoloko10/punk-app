@@ -127,7 +127,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         async def events(request):
             response = web.StreamResponse(headers={'Content-Type': 'text/event-stream'})
             await response.prepare(request)
-            for seq, event in enumerate([{'event': 'message.delta', 'delta': 'Resposta real'}, {'event': 'tool.started', 'tool': 'read_file'}, {'event': 'tool.completed', 'tool': 'read_file', 'error': False}, {'event': 'run.completed', 'output': 'Resposta real'}]):
+            for seq, event in enumerate([{'event': 'message.delta', 'delta': 'Resposta real'}, {'event': 'tool.started', 'tool': 'read_file', 'tool_call_id': 'tool-1', 'arguments': {'path': 'notes.txt', 'token': 'never-show'}}, {'event': 'tool.completed', 'tool': 'read_file', 'tool_call_id': 'tool-1', 'result': {'lines': 4}, 'error': False}, {'event': 'run.completed', 'output': 'Resposta real'}]):
                 await response.write(('data: ' + json.dumps({**event, 'seq': seq}) + '\n\n').encode())
             await response.write_eof()
             return response
@@ -145,6 +145,10 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
             frames = [await ws.receive_json(timeout=5) for _ in range(4)]
             self.assertEqual(frames[0]['payload']['text'], 'Resposta real')
             self.assertEqual(frames[1]['payload']['title'], 'read_file')
+            self.assertIn('notes.txt', frames[1]['payload']['detail'])
+            self.assertNotIn('never-show', frames[1]['payload']['detail'])
+            self.assertEqual(frames[1]['payload']['id'], frames[2]['payload']['id'])
+            self.assertIn('4', frames[2]['payload']['detail'])
             self.assertTrue(frames[-1]['payload']['done'])
             self.assertEqual(frames[-1]['payload']['status'], 'completed')
             self.assertEqual(seen['runs'], 1)
