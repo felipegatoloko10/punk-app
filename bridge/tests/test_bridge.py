@@ -253,5 +253,27 @@ class PureTests(unittest.TestCase):
         self.assertEqual(invoked, [{'a': 1}])
 
 
+    async def test_accessibility_and_voice_events_are_observable_but_not_agent_prompts(self):
+        ws = await self.socket()
+        await ws.send_json({'id': 'event-1', 'type': 'accessibility_event', 'payload': {
+            'seq': 7, 'timestamp': 1000, 'type': 'WINDOW_STATE_CHANGED',
+            'package': 'com.example.app', 'class': 'MainActivity', 'text': 'Tela inicial'
+        }})
+        await ws.send_json({'id': 'voice-1', 'type': 'voice_partial', 'payload': {
+            'sessionId': 'session-1', 'conversationId': 'conversation-1',
+            'text': 'abra o mapa', 'wakePhraseArmed': True, 'timestamp': 1001
+        }})
+        await asyncio.sleep(0.02)
+        response = await self.internal.get('/api/device-events', headers=self.internal_auth)
+        body = await response.json()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(body['events'][0]['seq'], 7)
+        self.assertEqual(body['events'][0]['package'], 'com.example.app')
+        self.assertEqual(body['voice']['partial'], 'abra o mapa')
+        self.assertTrue(body['voice']['wakePhraseArmed'])
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM messages').fetchone()[0], 0)
+        await ws.close()
+
+
 if __name__ == '__main__':
     unittest.main()

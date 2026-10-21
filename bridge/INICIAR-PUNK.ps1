@@ -1,8 +1,15 @@
 param([switch]$Foreground)
 $ErrorActionPreference = 'Stop'
 $punkPython = Join-Path $env:LOCALAPPDATA 'hermes\hermes-agent\venv\Scripts\python.exe'
+$punkHermesRoot = Join-Path $env:LOCALAPPDATA 'hermes'
+$punkHermesSource = Join-Path $punkHermesRoot 'hermes-agent'
 $punkRuntime = Join-Path $PSScriptRoot 'runtime'
 if (!(Test-Path -LiteralPath $punkPython)) { throw 'Não encontrei o Python da instalação do Hermes.' }
+New-Item -ItemType Directory -Force -Path $punkRuntime | Out-Null
+$env:HERMES_HOME = $punkHermesRoot
+$env:PYTHONPATH = $punkHermesSource
+& $punkPython (Join-Path $PSScriptRoot 'clone_profile.py') --status-file (Join-Path $punkRuntime 'identity-sync.json') | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Falha ao sincronizar identidade, modelo e recursos do Hermes.' }
 $punkArguments = @('-u', ('"' + (Join-Path $PSScriptRoot 'server.py') + '"'), '--runtime', ('"' + $punkRuntime + '"'))
 if ($Foreground) { & $punkPython -u (Join-Path $PSScriptRoot 'server.py') --runtime $punkRuntime; exit $LASTEXITCODE }
 $punkListener = Get-NetTCPConnection -LocalPort 18765 -State Listen -ErrorAction SilentlyContinue

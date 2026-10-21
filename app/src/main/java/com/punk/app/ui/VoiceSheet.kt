@@ -34,10 +34,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
+import com.punk.app.LiveVoiceService
 import com.punk.chat.ChatViewModel
 import com.punk.voice.AndroidVoiceEngine
 import com.punk.voice.VoiceStatus
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,49 +45,22 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
     val context=LocalContext.current
     val status by engine.status.collectAsState()
     val amplitude by engine.amplitudeFlow.collectAsState()
+    val live by LiveVoiceService.state.collectAsState()
     val busy by vm.busy.collectAsState()
     val messages by vm.messages.collectAsState()
     val enteredAt=remember { System.currentTimeMillis() }
-    var transcript by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var submitted by remember { mutableStateOf(false) }
     var active by remember { mutableStateOf(true) }
-    var liveMode by remember { mutableStateOf(true) }
-    var heardReply by remember { mutableStateOf(false) }
     var permission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context,Manifest.permission.RECORD_AUDIO)==PackageManager.PERMISSION_GRANTED) }
-    val listening=status is VoiceStatus.Listening
-    val preparing=status is VoiceStatus.Ready || status is VoiceStatus.Processing
-    val speaking=status is VoiceStatus.Speaking
+    val listening=live.active && live.phase in setOf("listening","armed","waiting_wake")
+    val preparing=live.active && live.phase in setOf("preparing","processing")
+    val speaking=live.active && live.phase=="speaking"
+    val transcript=live.transcript
     val latest=messages.lastOrNull { it.role=="assistant" && it.ts>=enteredAt }
     val latestUser=messages.lastOrNull { it.role=="user" && it.ts>=enteredAt }
-    val displayError=error ?: (status as? VoiceStatus.Error)?.message
-    fun listen() {
-        error=null
-        transcript=""
-        submitted=false
-        engine.startListeningWithCallbacks(
-            onPartial={if(active)transcript=it},
-            onFinal={ final ->
-                if(active)transcript=final
-                if(active && final.isNotBlank() && !submitted) {
-                    submitted=true
-                    vm.sendText(final,spoken=true)
-                }
-            },
-            onError={if(active)error=it}
-        )
-    }
+    val displayError=live.error ?: (status as? VoiceStatus.Error)?.message
     val request=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         permission=granted
-        if(granted)listen() else error="O microfone está desativado. Você também pode conversar por texto."
-    }
-    LaunchedEffect(status,busy,permission,active,liveMode) {
-        if(status is VoiceStatus.Speaking) heardReply=true
-        if(heardReply && status is VoiceStatus.Idle && !busy && permission && active && liveMode) {
-            heardReply=false
-            delay(350)
-            if(active && liveMode && !vm.busy.value) listen()
-        }
+        if(granted)LiveVoiceService.start(context)
     }
     DisposableEffect(engine,context) {
         val lifecycle=(context as? LifecycleOwner)?.lifecycle
@@ -99,16 +72,20 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
             }
             if(event==Lifecycle.Event.ON_STOP) {
                 active=false
-                engine.cancelListening()
-                engine.stopSpeaking()
+                if(!LiveVoiceService.state.value.active) {
+                    engine.cancelListening()
+                    engine.stopSpeaking()
+                }
             }
         }
         lifecycle?.addObserver(observer)
         onDispose {
             active=false
             lifecycle?.removeObserver(observer)
-            engine.cancelListening()
-            engine.stopSpeaking()
+            if(!LiveVoiceService.state.value.active) {
+                engine.cancelListening()
+                engine.stopSpeaking()
+            }
         }
     }
     ModalBottomSheet(
@@ -126,14 +103,30 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
                 IconButton(onClick=onDismiss) { PunkIcon(PunkGlyph.Close,stringResource(R.string.punk_voice_close)) }
             }
             FilterChip(
-                selected=liveMode,
+                selected=live.active,
                 onClick={
-                    liveMode=!liveMode
-                    if(!liveMode) engine.cancelListening()
+                    if(live.active) LiveVoiceService.stop(context)
+                    else if(permission) LiveVoiceService.start(context)
+                    else request.launch(Manifest.permission.RECORD_AUDIO)
                 },
-                label={Text(if(liveMode)"LIVE ATIVO · toque em Falar" else "LIVE PAUSADO")},
-                leadingIcon={PunkIcon(if(liveMode)PunkGlyph.Mic else PunkGlyph.Stop,modifier=Modifier.size(18.dp))}
+                label={Text(if(live.active)"LIVE ATIVO · continua em segundo plano" else "LIVE PAUSADO")},
+                leadingIcon={PunkIcon(if(live.active)PunkGlyph.Mic else PunkGlyph.Stop,modifier=Modifier.size(18.dp))}
             )
+            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text("Ativação por “Punk”",style=MaterialTheme.typography.titleSmall)
+                    Text(
+                        if(live.onDeviceRecognition)"Reconhecimento local disponível" else "Usa o serviço de voz configurado no Android",
+                        style=MaterialTheme.typography.bodySmall,
+                        color=PunkTextSecondary
+                    )
+                }
+                Switch(
+                    checked=live.wakePhraseEnabled,
+                    enabled=live.active,
+                    onCheckedChange={LiveVoiceService.setWakePhrase(context,it)}
+                )
+            }
             val power by animateFloatAsState(if(listening)amplitude.coerceIn(0f,1f) else if(speaking).35f else .05f,label="voice amplitude")
             Box(Modifier.size(180.dp),contentAlignment=Alignment.Center) {
                 Canvas(Modifier.fillMaxSize()) {
@@ -147,7 +140,7 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
                 else PunkIcon(PunkGlyph.Mic,tint=PunkNeonCyan,modifier=Modifier.size(38.dp))
             }
             Text(
-                when { displayError!=null -> stringResource(R.string.punk_voice_retry); !permission -> stringResource(R.string.punk_voice_enable); listening -> stringResource(R.string.punk_voice_listening); preparing -> "Preparando reconhecimento…"; speaking -> stringResource(R.string.punk_voice_speaking); busy -> stringResource(R.string.punk_voice_working); else -> stringResource(R.string.punk_voice_ready) },
+                when { displayError!=null -> stringResource(R.string.punk_voice_retry); !permission -> stringResource(R.string.punk_voice_enable); live.phase=="waiting_wake" -> "Diga “Punk” para ativar"; live.phase=="armed" -> "Punk ativado · diga seu pedido"; listening -> stringResource(R.string.punk_voice_listening); preparing -> if(live.phase=="processing")stringResource(R.string.punk_voice_working) else "Preparando reconhecimento…"; speaking -> "Punk está falando · fale ou toque para interromper"; busy -> stringResource(R.string.punk_voice_working); else -> stringResource(R.string.punk_voice_ready) },
                 style=MaterialTheme.typography.headlineMedium,
                 modifier=Modifier.semantics { liveRegion=LiveRegionMode.Polite }
             )
@@ -178,20 +171,21 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
             }
             Row(Modifier.fillMaxWidth().padding(bottom=24.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick={
-                    if(!submitted && transcript.isNotBlank())vm.onInput(transcript)
+                    if(transcript.isNotBlank())vm.onInput(transcript)
                     onDismiss()
                 },modifier=Modifier.weight(1f).heightIn(min=52.dp)) { Text(stringResource(R.string.punk_keyboard)) }
                 Button(onClick={
                     when {
                         !permission -> request.launch(Manifest.permission.RECORD_AUDIO)
-                        busy || speaking -> { liveMode=false; vm.stop() }
-                        listening || preparing -> { liveMode=false; engine.cancelListening() }
-                        else -> { liveMode=true; listen() }
+                        speaking -> LiveVoiceService.interrupt(context)
+                        busy -> { LiveVoiceService.stop(context); vm.stop() }
+                        live.active -> LiveVoiceService.stop(context)
+                        else -> LiveVoiceService.start(context)
                     }
                 },modifier=Modifier.weight(1f).heightIn(min=52.dp)) {
                     PunkIcon(if(busy || speaking || listening || preparing)PunkGlyph.Stop else PunkGlyph.Mic)
                     Spacer(Modifier.width(8.dp))
-                    Text(when { !permission -> stringResource(R.string.punk_activate); busy || speaking -> stringResource(R.string.punk_stop); listening || preparing -> stringResource(R.string.punk_pause); else -> stringResource(R.string.punk_speak) })
+                    Text(when { !permission -> stringResource(R.string.punk_activate); speaking -> "Interromper"; busy -> stringResource(R.string.punk_stop); live.active -> stringResource(R.string.punk_pause); else -> stringResource(R.string.punk_speak) })
                 }
             }
         }

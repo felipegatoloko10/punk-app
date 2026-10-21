@@ -69,7 +69,7 @@ object ChatRepository {
         val old=db.dao().message(message.messageId)
         db.dao().insert(message.copy(id=old?.id ?: message.id))
     }
-    suspend fun send(text:String,spoken:Boolean,attachments:JsonArray=JsonArray(emptyList()),retryId:String?=null) {
+    suspend fun send(text:String,spoken:Boolean,attachments:JsonArray=JsonArray(emptyList()),retryId:String?=null):String {
         awaitReady()
         val cid=selected.value
         val message=ChatMessage(conversationId=cid,role="user",text=text,messageId=retryId ?: java.util.UUID.randomUUID().toString(),status="sending",spoken=spoken,attachmentsJson=attachments.toString())
@@ -79,6 +79,7 @@ object ChatRepository {
             put("conversationId",cid); put("messageId",message.messageId); put("text",text); put("spoken",spoken); put("attachments",attachments)
         })
         if(!sent) mutation.withLock { put(message.copy(status="failed")) }
+        return message.messageId
     }
     suspend fun retry(id:String) {
         awaitReady()

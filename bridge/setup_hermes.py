@@ -50,13 +50,17 @@ def main():
 
     # Native APIs own profile path resolution and clone filtering. No shell strings.
     script = str(Path(__file__).parent / "clone_profile.py")
-    result = subprocess.run([str(python), script], cwd=source, env=env, capture_output=True, text=True, timeout=600)
+    runtime = Path(args.runtime).resolve()
+    result = subprocess.run(
+        [str(python), script, '--status-file', str(runtime / 'identity-sync.json')],
+        cwd=source, env=env, capture_output=True, text=True, timeout=600,
+    )
     if result.returncode:
         raise SystemExit('Native profile clone failed; source profile was not changed. Inspect Hermes diagnostics locally.')
     profile = Path(result.stdout.strip().splitlines()[-1]).resolve()
     if profile.name != 'punk-mobile' or not (profile / 'config.yaml').exists():
         raise SystemExit('Native profile returned an unexpected path; refusing to write.')
-    runtime = Path(args.runtime).resolve(); config = load_config(runtime)
+    config = load_config(runtime)
     if os.name == 'nt':
         account = os.environ.get('USERDOMAIN', '') + '\\' + getpass.getuser()
         protected = subprocess.run(['icacls', str(runtime), '/inheritance:r', '/grant:r', account + ':(OI)(CI)F', 'SYSTEM:(OI)(CI)F'], capture_output=True)
@@ -66,6 +70,7 @@ def main():
     if not config.get('hermesToken'):
         config['hermesToken'] = secrets.token_urlsafe(48)
     config['hermesUrl'] = 'http://127.0.0.1:8642/p/punk-mobile'
+    config.pop('_runtimePath', None)
     config_path = runtime / 'config.json'
     config_path.write_text(json.dumps(config, indent=2), encoding='utf-8'); os.chmod(config_path, 0o600)
     plugin = profile / 'plugins' / 'punk_control'; plugin.mkdir(parents=True, exist_ok=True)
@@ -73,20 +78,6 @@ def main():
         shutil.copy2(Path(__file__).parent / 'punk_control' / name, plugin / name)
     settings_path = plugin / 'settings.json'
     settings_path.write_text(json.dumps({'url': f'http://127.0.0.1:{args.internal_port}', 'token': config['internalToken']}), encoding='utf-8'); os.chmod(settings_path, 0o600)
-    # Use the installed interpreter/YAML parser, scoped to the clone only. Keep
-    # native approvals off: our independent gate controls the supervised mode.
-    edit_script = """import pathlib,yaml,sys
-p=pathlib.Path(sys.argv[1]); c=yaml.safe_load(p.read_text(encoding='utf-8')) or {}
-c.setdefault('agent',{})['yolo']=False
-c.setdefault('approvals',{})['mode']='off'
-pl=c.setdefault('plugins',{}); pl['enabled']=list(dict.fromkeys(list(pl.get('enabled') or [])+['punk_control']))
-pl['disabled']=[x for x in pl.get('disabled',[]) if x!='punk_control']
-c.setdefault('platform_toolsets',{})['api_server']=['hermes-api-server','jarvis_core','memory_hindsight','punk_control']
-p.write_text(yaml.safe_dump(c,allow_unicode=True,sort_keys=False),encoding='utf-8')
-"""
-    edited = subprocess.run([str(python), '-c', edit_script, str(profile / 'config.yaml')], cwd=source, env=env, capture_output=True, timeout=30)
-    if edited.returncode:
-        raise SystemExit('Profile config update failed; integration was not activated.')
     set_env(profile / '.env', 'API_SERVER_KEY', config['hermesToken'])
     set_env(profile / '.env', 'API_SERVER_ENABLED', 'true')
     # The shared listener needs a default-profile credential, distinct from the

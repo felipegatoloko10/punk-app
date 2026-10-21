@@ -29,6 +29,7 @@ class PunkAccessibilityService : AccessibilityService() {
     companion object {
         var instance: PunkAccessibilityService? = null
             private set
+        @Volatile var eventConsumer: ((JsonObject) -> Unit)? = null
         fun isEnabled(): Boolean = instance != null
         fun hasPendingGestures(): Boolean = instance?.activeGestures?.isNotEmpty() == true
     }
@@ -42,6 +43,9 @@ class PunkAccessibilityService : AccessibilityService() {
     private val gestureSequence = AtomicLong()
     private val eventSequence = AtomicLong()
     private val eventBuffer = ConcurrentLinkedDeque<JsonObject>()
+    private var lastPushedAt = 0L
+    private var lastPushedFingerprint = ""
+    private var droppedSincePush = 0
     private var lastVolumeDownTime = 0L
 
     override fun onKeyEvent(event: android.view.KeyEvent?): Boolean {
@@ -77,6 +81,28 @@ class PunkAccessibilityService : AccessibilityService() {
         }
         eventBuffer.addFirst(item)
         while (eventBuffer.size > 200) eventBuffer.pollLast()
+        val now = System.currentTimeMillis()
+        val important = event.eventType in setOf(
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_CLICKED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED
+        )
+        val fingerprint = "${event.eventType}|${event.packageName}|${event.className}|${event.windowId}|${item["text"]}"
+        val duplicate = fingerprint == lastPushedFingerprint && now - lastPushedAt < 750
+        val eligible = event.packageName?.toString() != packageName && !duplicate && (important || now - lastPushedAt >= 300)
+        if (eligible) {
+            val outgoing = buildJsonObject {
+                item.forEach { (key, value) -> put(key, value) }
+                put("droppedSinceLast", droppedSincePush)
+            }
+            droppedSincePush = 0
+            lastPushedAt = now
+            lastPushedFingerprint = fingerprint
+            eventConsumer?.invoke(outgoing)
+        } else {
+            droppedSincePush++
+        }
     }
 
     override fun onInterrupt() {}

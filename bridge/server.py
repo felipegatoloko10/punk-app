@@ -11,6 +11,7 @@ import secrets
 import shutil
 import ssl
 import time
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -128,6 +129,8 @@ class Bridge:
         self.policy_seen = 0.0
         self.pair_attempts = {}
         self.upload_locks = {}
+        self.device_events = {}
+        self.voice_sessions = {}
         self.http = None
         self.mode_lock = asyncio.Lock()
         self.conversation_locks = {}
@@ -202,6 +205,7 @@ class Bridge:
         app.router.add_post('/api/policy/ready', self.policy_ready)
         app.router.add_post('/api/policy/check', self.policy_check)
         app.router.add_post('/api/files/publish', self.publish_file)
+        app.router.add_get('/api/device-events', self.internal_device_events)
         return app
 
     async def health(self):
@@ -211,7 +215,21 @@ class Bridge:
                 available = res.status == 200
         except (aiohttp.ClientError, asyncio.TimeoutError):
             pass
+        identity = {}
+        status_path = Path(self.config.get('_runtimePath', '')) / 'identity-sync.json'
+        try:
+            if status_path.is_file():
+                raw = json.loads(status_path.read_text(encoding='utf-8'))
+                identity = {key: raw.get(key) for key in (
+                    'ok', 'sourceProfile', 'profile', 'provider', 'model', 'identitySha256',
+                    'skillsSha256', 'syncedAt', 'sharedMemory', 'toolsetParity'
+                ) if key in raw}
+        except (OSError, ValueError, TypeError):
+            identity = {'ok': False, 'profile': 'punk-mobile'}
         return {'bridge': True, 'hermes': available, 'policy': time.time() - self.policy_seen < 35,
+                'identity': identity,
+                'accessibilityPush': sum(len(items) for items in self.device_events.values()),
+                'voiceLive': any(item.get('active') for item in self.voice_sessions.values()),
                 **(await self.adb_health())}
 
     async def adb_health(self):
@@ -360,9 +378,69 @@ class Bridge:
                 waiter = self.cancel_waiters.get((device, call_id))
                 if waiter and not waiter.done():
                     waiter.set_result(True)
+        elif kind == 'accessibility_event':
+            event_type = str(p.get('type', ''))[:80]
+            package = str(p.get('package', ''))[:255]
+            if not event_type or not re.fullmatch(r'[A-Za-z0-9_.$: ]*', package):
+                raise ValueError()
+            item = {
+                'seq': int(p.get('seq', 0)),
+                'timestamp': int(p.get('timestamp', int(time.time() * 1000))),
+                'type': event_type,
+                'package': package,
+                'class': str(p.get('class', ''))[:255],
+                'windowId': int(p.get('windowId', -1)),
+                'text': str(p.get('text', ''))[:500],
+                'description': str(p.get('description', ''))[:500],
+                'conversationId': str(p.get('conversationId', 'default'))[:128],
+                'droppedSinceLast': max(0, min(100000, int(p.get('droppedSinceLast', 0))))
+            }
+            self.device_events.setdefault(device, deque(maxlen=256)).append(item)
+        elif kind == 'voice_partial':
+            session_id = checked_id(p.get('sessionId', ''))
+            conversation = checked_id(p.get('conversationId', 'default'))
+            self.voice_sessions[device] = {
+                **self.voice_sessions.get(device, {}),
+                'active': True,
+                'sessionId': session_id,
+                'conversationId': conversation,
+                'partial': str(p.get('text', ''))[:2000],
+                'wakePhraseArmed': p.get('wakePhraseArmed') is True,
+                'updatedAt': int(p.get('timestamp', int(time.time() * 1000)))
+            }
+        elif kind == 'voice_session':
+            event = str(p.get('event', ''))
+            if event not in {'started', 'stopped', 'submitted', 'armed', 'barge_in', 'wake_phrase'}:
+                raise ValueError()
+            self.voice_sessions[device] = {
+                'active': event != 'stopped',
+                'sessionId': str(p.get('sessionId', ''))[:128],
+                'conversationId': str(p.get('conversationId', 'default'))[:128],
+                'event': event,
+                'phase': str(p.get('phase', ''))[:40],
+                'wakePhraseEnabled': p.get('wakePhraseEnabled') is True,
+                'onDeviceRecognition': p.get('onDeviceRecognition') is True,
+                'bargeInSupported': p.get('bargeInSupported') is True,
+                'batteryAtStart': int(p.get('batteryAtStart', -1)),
+                'batteryNow': int(p.get('batteryNow', -1)),
+                'updatedAt': int(p.get('timestamp', int(time.time() * 1000)))
+            }
         elif kind in ('notification', 'device_status'):
             # Device observations are data. Do not inject them into the agent as instructions.
             pass
+
+    async def internal_device_events(self, request):
+        device = request.query.get('deviceId')
+        if not device:
+            candidates = set(self.device_events) | set(self.voice_sessions) | set(self.sockets)
+            if len(candidates) != 1:
+                raise web.HTTPBadRequest(reason='deviceId is required when zero or multiple devices are known')
+            device = next(iter(candidates))
+        since = max(0, int(request.query.get('sinceSeq', '0')))
+        limit = max(1, min(200, int(request.query.get('limit', '50'))))
+        events = [item for item in self.device_events.get(device, ()) if item['seq'] > since][-limit:]
+        return web.json_response({'ok': True, 'deviceId': device, 'events': events,
+                                  'voice': self.voice_sessions.get(device), 'count': len(events)})
 
     async def chunk(self, device, cid, mid, text='', done=False, status='running', **extra):
         return await self.emit(device, 'chat_chunk', {'conversationId': cid, 'messageId': 'assistant:' + mid, 'requestId': mid, 'text': text, 'done': done, 'status': status, **extra})
@@ -728,7 +806,9 @@ def load_config(root):
         config = {'host': '0.0.0.0', 'port': 18765, 'internalPort': 18766, 'internalToken': secrets.token_urlsafe(48), 'hermesUrl': 'http://127.0.0.1:8642/p/punk-mobile', 'hermesToken': ''}
         path.write_text(json.dumps(config, indent=2), encoding='utf-8')
         os.chmod(path, 0o600)
-    return json.loads(path.read_text(encoding='utf-8'))
+    config = json.loads(path.read_text(encoding='utf-8'))
+    config['_runtimePath'] = str(Path(root).resolve())
+    return config
 
 
 def safe_preview(value):

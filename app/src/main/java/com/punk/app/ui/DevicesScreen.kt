@@ -33,8 +33,10 @@ import com.punk.tools.PunkNotificationListener
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import rikka.shizuku.Shizuku
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 
 @Composable
 fun DevicesScreen(vm:ChatViewModel,onSettings:()->Unit) {
@@ -99,6 +101,13 @@ fun DevicesScreen(vm:ChatViewModel,onSettings:()->Unit) {
                     if(connected && health.isNotEmpty()) {
                         HealthRow("Agente no computador",(health["hermes"] as? JsonPrimitive)?.booleanOrNull)
                         HealthRow("Controle integrado",(health["policy"] as? JsonPrimitive)?.booleanOrNull)
+                        val identity=health["identity"] as? JsonObject
+                        HealthRow("Identidade sincronizada",(identity?.get("ok") as? JsonPrimitive)?.booleanOrNull)
+                        DetailRow("Perfil",(identity?.get("profile") as? JsonPrimitive)?.contentOrNull ?: "punk-mobile")
+                        DetailRow("Modelo",(identity?.get("model") as? JsonPrimitive)?.contentOrNull ?: "Verificando")
+                        DetailRow("Provedor",(identity?.get("provider") as? JsonPrimitive)?.contentOrNull ?: "Verificando")
+                        HealthRow("Mesmos recursos do Telegram",(identity?.get("toolsetParity") as? JsonPrimitive)?.booleanOrNull)
+                        HealthRow("Voz Live",(health["voiceLive"] as? JsonPrimitive)?.booleanOrNull)
                     }
                     AdbHealthRow(
                         state=if(connected)(health["adbState"] as? JsonPrimitive)?.content else null,
@@ -178,6 +187,14 @@ private fun HealthRow(title:String,ready:Boolean?) {
     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
         Text(title,style=MaterialTheme.typography.bodySmall,color=PunkTextSecondary,modifier=Modifier.weight(1f))
         Text(when(ready) { true -> "Pronto";false -> "Indisponível";null -> "Verificando" },style=MaterialTheme.typography.labelMedium,color=when(ready) { true -> PunkNeonGreen;false -> PunkNeonMagenta;null -> PunkTextSecondary })
+    }
+}
+
+@Composable
+private fun DetailRow(title:String,value:String) {
+    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
+        Text(title,style=MaterialTheme.typography.bodySmall,color=PunkTextSecondary,modifier=Modifier.weight(1f))
+        Text(value.take(34),style=MaterialTheme.typography.labelMedium,color=PunkTextPrimary)
     }
 }
 

@@ -72,7 +72,7 @@ class BridgeClient(
         override fun onOpen(webSocket: WebSocket, response: Response) {
             if (closed) { webSocket.close(1000, "Encerrado"); return }
             send(BridgeTypes.HELLO, buildJsonObject {
-                put("client", "punk-android"); put("version", "3.4.0"); put("protocolVersion", 3)
+                put("client", "punk-android"); put("version", "3.5.0"); put("protocolVersion", 3)
                 put("deviceModel", Build.MODEL); put("androidVersion", Build.VERSION.RELEASE)
                 put("deviceId", config.deviceId); put("lastSeq", BridgePrefs.lastSeq(context)); put("tools", catalog)
             })

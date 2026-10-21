@@ -17,11 +17,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
 import com.punk.app.ui.*
 import com.punk.bridge.BridgeService
+import com.punk.bridge.BridgePrefs
 import com.punk.chat.ChatScreen
 import com.punk.chat.ChatViewModel
 import com.punk.voice.VoiceManager
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     companion object { const val EXTRA_OPEN_VOICE = "com.punk.app.OPEN_VOICE" }
@@ -116,6 +119,17 @@ class MainActivity : ComponentActivity() {
                         dismissButton = { TextButton(onClick = { vm.respondApproval(request.id, false) }) { Text("Recusar") } }
                     )
                 }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        lifecycleScope.launch {
+            BridgePrefs.initialize(this@MainActivity)
+            val config=BridgePrefs.load(this@MainActivity)
+            if(config.host.isNotBlank() && config.token.isNotBlank() && config.deviceId.isNotBlank()) {
+                startForegroundService(Intent(this@MainActivity,BridgeService::class.java).setAction(BridgeService.ACTION_START))
             }
         }
     }

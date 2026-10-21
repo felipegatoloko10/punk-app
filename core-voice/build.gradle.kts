@@ -25,6 +25,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation("androidx.core:core-ktx:1.12.0")
-
-
+    testImplementation(kotlin("test"))
 }

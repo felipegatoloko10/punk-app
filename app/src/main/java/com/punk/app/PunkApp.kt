@@ -1,6 +1,7 @@
 package com.punk.app
 
 import android.app.Application
+import com.punk.accessibility.PunkAccessibilityService
 import com.punk.bridge.*
 import com.punk.chat.ActionEvent
 import com.punk.chat.ChatRepository
@@ -25,6 +26,12 @@ class PunkApp:Application() {
             } ?: false
         }
         BridgeService.stopLocalTools={ ToolRegistry.cancelAll(this@PunkApp); com.punk.voice.VoiceManager.cancelAll() }
+        PunkAccessibilityService.eventConsumer={ event ->
+            BridgeService.sendMessage(BridgeTypes.ACCESSIBILITY_EVENT,buildJsonObject {
+                event.forEach { (key,value) -> put(key,value) }
+                put("conversationId",ChatRepository.selected.value)
+            })
+        }
         BridgeService.toolExecutor={ tool,params,callId ->
             try {
                 val definition=ToolRegistry.tools.firstOrNull { it.name==tool }

@@ -1,14 +1,14 @@
-# Punk · 3.4.0
+# Punk · 3.5.0
 
 **Seu agente no computador e no Android, em uma única conversa.**
 
-[Baixar APK](apk/Punk-3.4.0.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.4.0-validation.json) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
+[Baixar APK](apk/Punk-3.5.0.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.5.0-validation.json) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
 
 Aplicativo Android nativo para conversar com o seu Punk e usar as ferramentas do Hermes no computador e no celular. Interface em português, com fundo grafite, destaque ciano e três áreas: **Conversa**, **Dispositivos** e **Atividade**.
 
 ## Instalar no celular
 
-O APK está em [`apk/Punk-3.4.0.apk`](apk/Punk-3.4.0.apk), versão 3.4.0, código 28, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
+O APK está em [`apk/Punk-3.5.0.apk`](apk/Punk-3.5.0.apk), versão 3.5.0, código 29, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
 
 1. Copie o APK para o S23 Ultra e instale.
 2. No PC, execute `bridge/INICIAR-PUNK.ps1` para iniciar o novo bridge.
@@ -23,8 +23,10 @@ Em uma instalação nova no computador, siga primeiro a [provisão do bridge](br
 ## O que foi implementado
 
 - Conversa com streaming, Markdown, código copiável, múltiplas conversas, histórico persistente, busca, exportação e repetição explícita de pedidos interrompidos.
-- Modo Live por turnos na mesma conversa: escuta, envia ao Hermes, fala a resposta e reabre o microfone automaticamente. O usuário pode pausar e retomar o ciclo a qualquer momento.
-- Reconhecimento de voz corrigido para não iniciar e ser cancelado pelo primeiro toque. O microfone só começa quando **Falar** é pressionado, não disputa foco exclusivo com o próprio serviço de reconhecimento e exibe o código real de falha quando o Android recusa a sessão.
+- Modo Live persistente em foreground: continua ativo ao fechar a folha ou apagar a tela, mantém notificação com controles e reabre a escuta após cada resposta.
+- Wake phrase opcional “Punk”/“Ei, Punk”, reconhecimento local quando disponível, fallback para o reconhecedor do sistema, transcrição parcial e indicação clara de escuta, processamento e fala.
+- Barge-in: o botão **Interromper e falar** sempre corta o TTS; interrupção por voz é ativada quando o aparelho oferece cancelamento acústico, evitando que o próprio alto-falante seja confundido com o usuário.
+- Telemetria Live sem áudio bruto: sessão, bateria, modo do reconhecedor e texto parcial seguem ao bridge; nenhuma captura de microfone é gravada ou enviada.
 - Cartões de dispositivos e permissões com estado real. A aba Atividade agora mostra duração, origem, status técnico, ID, última atualização, entradas e resultados sanitizados das ferramentas.
 - Diagnóstico ADB em tempo real: o app separa “Depuração USB ativada” de “PC conectado e autorizado”. O bridge verifica o `adb devices` local a cada dez segundos e informa conectado, aguardando autorização, offline, ausente ou erro sem transmitir o serial do aparelho.
 - Diagnóstico local independente: **Shizuku · ADB local** mostra quando o serviço privilegiado está ativo e autorizado no próprio celular, sem confundir esse estado com o ADB do computador.
@@ -35,6 +37,7 @@ Em uma instalação nova no computador, siga primeiro a [provisão do bridge](br
 - Árvore de interface estruturada em JSON com texto sanitizado, ID, classe, hierarquia, limites, estado e ações de cada nó. Campos de senha nunca têm o conteúdo exposto.
 - Busca de elementos por texto, descrição ou ID; `find_and_click` repete a busca, rola a tela de forma limitada e clica no ancestral acionável, reduzindo a dependência de coordenadas fixas.
 - Buffer sequencial de eventos de acessibilidade para detectar troca de janela, diálogos e mudanças de conteúdo sem capturar screenshots continuamente.
+- Push de eventos de acessibilidade com deduplicação e limite local; o bridge mantém um buffer privado consultável pelas ferramentas sem transformar texto de apps em instruções do agente.
 - OCR local da tela com o modelo latino do ML Kit: retorna texto, blocos, linhas, elementos e coordenadas sem enviar a imagem a um serviço externo.
 - Notificações acionáveis: além de listar, o Hermes pode abrir, dispensar e responder inline quando o aplicativo de origem oferece `RemoteInput`.
 - Gestos avançados por acessibilidade: toque longo, arrastar e soltar, caminho com até 32 pontos e pinça/zoom real com dois dedos.
@@ -50,7 +53,7 @@ Em uma instalação nova no computador, siga primeiro a [provisão do bridge](br
 
 ## Integração com o agente
 
-O bridge usa a API nativa do Hermes (`/v1/runs` + SSE retomável), no perfil `punk-mobile`. A provisão inicializa esse perfil a partir da identidade, configuração, skills e plugins selecionados do agente existente, com histórico próprio e os mesmos serviços externos de memória configurados. Na instalação validada, o perfil padrão (Telegram) e o `punk-mobile` usam o mesmo provedor `nine_router`, modelo `cx/gpt-5.6-sol`, endpoint de inferência e acesso amplo às ferramentas. Mudanças futuras de personalidade ou configuração ainda precisam ser sincronizadas explicitamente.
+O bridge usa a API nativa do Hermes (`/v1/runs` + SSE retomável), no perfil `punk-mobile`. Ao iniciar, ele sincroniza novamente identidade, modelo, provedor, skills, plugins e o toolset do Telegram a partir do perfil padrão. Histórico, canais e segredos continuam isolados; a memória externa configurada é compartilhada. O app mostra perfil, modelo, provedor e paridade no cartão do computador, e `identity-sync.json` registra hashes sem expor conteúdo pessoal.
 
 O plugin `punk_control` aplica a política de execução independentemente do modo YOLO do Hermes. O bridge rejeita novos pedidos quando o componente de política não está saudável. Provisão e detalhes do protocolo: [`bridge/README.md`](bridge/README.md) e [`bridge/PROTOCOL.md`](bridge/PROTOCOL.md).
 
@@ -58,11 +61,11 @@ O plugin `punk_control` aplica a política de execução independentemente do mo
 
 ## Limites e validação
 
-O controle é limitado às permissões concedidas pelo Android, acessibilidade e Shizuku sem root, e aos acessos da sessão Windows do Hermes. Telas protegidas, dados privados de outros aplicativos, janelas elevadas e operações em segundo plano podem ser restritos. Captura de câmera/microfone exige o Punk visível nesta versão. Resposta de notificação só funciona quando a própria notificação expõe uma ação de resposta direta. Operações de administração são marcadas individualmente como destrutivas no catálogo e permanecem na trilha de auditoria sanitizada.
+O controle é limitado às permissões concedidas pelo Android, acessibilidade e Shizuku sem root, e aos acessos da sessão Windows do Hermes. Telas protegidas, dados privados de outros aplicativos, janelas elevadas e operações em segundo plano podem ser restritos. O Live exige uma sessão iniciada pelo usuário e exibe notificação persistente enquanto usa o microfone. Resposta de notificação só funciona quando a própria notificação expõe uma ação de resposta direta. Operações de administração são marcadas individualmente como destrutivas no catálogo e permanecem na trilha de auditoria sanitizada.
 
-O modo Live usa os mecanismos STT/TTS instalados no Android e funciona por turnos; ainda não é full-duplex e não interrompe a fala do assistente por voz. Wake word permanente, overlay e modos avançados de câmera ficam para evolução posterior. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
+O modo Live usa STT/TTS do Android e continua sendo conversação por turnos: a instalação atual do Hermes não expõe transporte Realtime de áudio. O barge-in interrompe a fala e abre uma nova escuta, mas não transmite áudio full-duplex. A wake phrase é reconhecida por software durante a sessão Live, não por DSP de baixíssimo consumo. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
 
-Validação desta versão: **23 testes Android e 16 testes Python passaram**, release assinada e lint sem erros bloqueantes. Foram exercitados política, cancelamento, replay, contratos de ferramentas, privacidade, auditoria, interpretação dos estados do ADB e atualização de saúde pelo WebSocket. Os testes do bridge usam TLS real e Hermes simulado. Também passou um teste separado com o Hermes local real: autenticação, envio de pedido e recebimento de `PUNK_OK` por streaming. As bibliotecas nativas do APK foram verificadas quanto ao alinhamento de página.
+Validação desta versão: **28 testes Android e 18 testes Python passaram**, release assinada e lint sem erros bloqueantes. Foram exercitados política, cancelamento, replay, contratos de ferramentas, wake phrase, sincronização de identidade/toolset, push seguro de eventos, privacidade, auditoria, estados do ADB e atualização de saúde pelo WebSocket. Os testes do bridge usam TLS real e Hermes simulado. No S23 Ultra foram confirmados instalação, versão, reconexão automática do bridge e renderização do novo painel Live. As bibliotecas nativas do APK foram verificadas quanto ao alinhamento de página.
 
 O Shizuku foi verificado no aparelho em execução via ADB wireless, autorizado e operando como UID 2000 (`shell`). Isso não significa que o Windows tenha enumerado o telefone: o cartão **ADB com o PC** continua sendo um diagnóstico separado e pode permanecer desconectado sem impedir as ferramentas locais via Shizuku.
 
@@ -93,4 +96,4 @@ python -m unittest discover -s tests -v
 | `core-security` | Auditoria e integridade |
 | `bridge` | Servidor Python e plugin de integração com o Hermes |
 
-O histórico Git mantém as versões anteriores. Os APKs antigos na pasta `apk/` são históricos; use **Punk-3.4.0.apk** para esta versão.
+O histórico Git mantém as versões anteriores. Os APKs antigos na pasta `apk/` são históricos; use **Punk-3.5.0.apk** para esta versão.

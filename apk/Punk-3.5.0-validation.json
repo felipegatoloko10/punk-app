@@ -1,0 +1,29 @@
+{
+  "apk": "Punk-3.5.0.apk",
+  "versionName": "3.5.0",
+  "versionCode": 29,
+  "bytes": 29326660,
+  "sha256": "a466b87349c55d27edba43e107a5162ae9e6a18850f0a476153996b86779cbe3",
+  "androidTests": 28,
+  "testFailures": 0,
+  "bridgeTests": 18,
+  "lintBlockingErrors": 0,
+  "zipalign4Bytes": true,
+  "nativeLibraries": 12,
+  "nativeLibrariesCompressed": 12,
+  "signatureSchemeV2": true,
+  "signerCertificateSha256": "c315805a680bab539ccc49ee7ea148074f96617431278d07a0b638d96e438aaf",
+  "physicalDeviceTested": true,
+  "physicalDeviceVersionVerified": true,
+  "bridgeAutoReconnectVerified": true,
+  "liveUiVerified": true,
+  "liveMicrophoneSessionVerified": false,
+  "identitySyncVerified": true,
+  "telegramToolsetParityVerified": true,
+  "readOnlyToolsVerified": [
+    "system_state"
+  ],
+  "shizukuVerified": true,
+  "shizukuUid": 2000,
+  "pcAdbEnumerated": true
+}

@@ -42,6 +42,9 @@ object BridgeTypes {
     const val TOOL_RESULT = "tool_result"
     const val CHAT = "chat"
     const val CHAT_CHUNK = "chat_chunk"
+    const val VOICE_PARTIAL = "voice_partial"
+    const val VOICE_SESSION = "voice_session"
+    const val ACCESSIBILITY_EVENT = "accessibility_event"
     const val DEVICE_STATUS = "device_status"
     const val ERROR = "error"
 }

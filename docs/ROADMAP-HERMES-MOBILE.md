@@ -55,7 +55,7 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 
 - Atualizar o bridge ativo, manter uma cópia privada de `runtime/` e reiniciar de forma coordenada.
 - Instalar o novo APK e validar migração do histórico no aparelho.
-- Adicionar endpoint autenticado de diagnóstico do Hermes e cartão “Modelo e capacidades” no app.
+- **Concluído em 3.5.0:** diagnóstico autenticado e cartão com perfil, modelo, provedor, sincronização de identidade e paridade do toolset com o Telegram.
 - Reconciliar também atividades remotas após reconexão, com histórico de execução fornecido pelo bridge.
 - Criar testes de migração Room em dispositivo/emulador e teste ponta a ponta com um Hermes real de homologação.
 - Validar no S23 Ultra o serviço de reconhecimento Samsung/Google e registrar o código retornado pelo Android caso ainda haja recusa.
@@ -64,7 +64,7 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 
 - **Concluído em 3.2.0:** `ui_dump` estruturado e sanitizado a partir de `AccessibilityNodeInfo`, com texto, id, classe, bounds e ações disponíveis.
 - **Concluído em 3.2.0:** `find_and_click` por texto/id com espera, scroll limitado e identificação do alvo. É a melhoria com maior impacto para abandonar coordenadas frágeis.
-- **Parcial em 3.2.0:** eventos de acessibilidade ficam em buffer sequencial consultável; o push contínuo, com limitação de frequência e escopo por sessão, ainda será conectado ao bridge.
+- **Concluído em 3.5.0:** eventos de acessibilidade são enviados ao bridge com deduplicação, limitação de frequência, contador de descartes e buffer privado; observações nunca entram automaticamente como prompt.
 - **Concluído em 3.2.0:** OCR local do conteúdo visível, sem upload da captura.
 - **Concluído em 3.2.0:** leitura, abertura, dispensa e resposta inline de notificações compatíveis.
 - Abrir apps, deep links, rotas e folhas de compartilhamento por intents validadas. Intents arbitrárias devem continuar bloqueadas ou exigir confirmação.
@@ -84,17 +84,26 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 - Energia e bloqueio: acordar, bloquear e navegar na tela bloqueada. O PIN opcional é cifrado com AES-GCM por uma chave Android Keystore não exportável e é removível por ferramenta própria.
 - Ações irreversíveis permanecem classificadas como `destructive`, passam pelo modo supervisionado quando ele está ativo e entram na auditoria com parâmetros sensíveis ocultos.
 
-### 3.5 — Live de baixa latência
+### Entregue na versão 3.5.0 — Live de baixa latência e paridade
 
-- Serviço foreground de voz iniciado pelo usuário, transcrição parcial, detecção de fim de fala, redução de ruído e barge-in para interromper o TTS.
-- Wake word offline opcional com Vosk ou Porcupine, indicador persistente de microfone, medição de bateria e botão único para desligar.
-- Áudio e texto em streaming no mesmo contexto da conversa, com reconexão, cancelamento e fallback para o modo por turnos já existente.
+- Serviço foreground de voz iniciado pelo usuário, notificação persistente, transcrição parcial, detecção de fim de fala e continuidade fora da tela do chat.
+- Reconhecimento on-device do Android quando disponível, fallback para o reconhecedor do sistema e wake phrase opcional “Punk”/“Ei, Punk”. Não foi incorporado um SDK comercial de wake word.
+- Barge-in manual sempre disponível e por voz em aparelhos com cancelamento acústico; redução de ruído é habilitada quando o Android oferece o efeito.
+- Texto parcial e estado da sessão seguem ao bridge no mesmo contexto da conversa. Áudio bruto não é transmitido porque o Hermes 0.22 instalado não anuncia uma API Realtime de áudio.
+- Sincronização automática do perfil padrão para `punk-mobile`: identidade, modelo, provedor, skills, memória configurada e o mesmo toolset do Telegram, com histórico/canais/segredos isolados.
+
+### Próxima recomendação: 3.6 — conversa e observabilidade
+
+- Cartões de ferramenta dentro de cada resposta, com argumentos sanitizados, progresso, resultado, duração e relação pai/filho.
+- Linha do tempo recuperável do bridge para reconciliar atividades remotas após reconexão e reinício do app.
+- Pré-visualização de imagens/documentos, fixação e arquivamento de conversas e busca global mais rápida.
+- Diagnóstico de voz por aparelho: latência STT/Hermes/TTS, motivo de fallback e consumo estimado de bateria, sem armazenar áudio.
 
 ### 4.0 — autonomia orientada por eventos
 
 - Regras como “quando chegar em casa”, “ao receber notificação X” ou “todo dia às 8h”, com condições, janela de execução e histórico.
 - Modo missão para objetivos longos: plano, checkpoints, orçamento, recuperação após falha e confirmação antes de passos destrutivos.
-- Gatilhos de acessibilidade/notificação enviados ao bridge sem polling, com filtros locais para não transmitir eventos irrelevantes.
+- Transformar os eventos já enviados ao bridge em regras explícitas e consentidas, com filtros locais e orçamento de execução.
 
 ### P1 — chat de nível profissional
 
@@ -105,13 +114,13 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 - Ações rápidas contextuais: copiar, compartilhar, continuar, refazer, transformar em tarefa e enviar ao PC.
 - Indicador explícito de modelo, perfil, memória e modo supervisionado em cada conversa.
 
-### P1 — Live multimodal
+### P1 — expansão Live multimodal
 
-- Cancelamento por fala (barge-in) para interromper o TTS e começar uma nova pergunta.
-- Detecção de fim de fala mais natural, redução de ruído e escolha de voz/velocidade.
-- Transcrição parcial transmitida ao bridge e resposta de áudio com menor latência.
+- **Concluído em 3.5.0:** cancelamento manual e barge-in por voz quando há cancelamento acústico, transcrição parcial no bridge e continuidade em foreground.
+- Tornar o fim de fala ainda mais natural e adicionar escolha de voz/velocidade.
+- Adotar áudio Realtime full-duplex quando o Hermes expuser um transporte compatível; hoje o fallback por turnos é intencional.
 - Modo câmera: apontar o celular e perguntar sobre o que está na tela/câmera.
-- Continuidade em segundo plano por sessão explicitamente iniciada, com notificação persistente e controles de privacidade.
+- Adicionar controles de privacidade e consumo ainda mais granulares à sessão persistente já entregue.
 
 ### P2 — mais “poderes” no celular
 
@@ -156,11 +165,12 @@ Nesse estágio, a recomendação é manter conteúdo sensível e credenciais for
 
 ## Verificação executada
 
-- `python -m unittest discover -s tests -q`: 16 testes, todos aprovados.
-- `:feature-chat:testDebugUnitTest :app:compileDebugKotlin`: aprovado.
-- `:app:assembleDebug`: aprovado.
+- `python -m unittest discover -s tests -v`: 18 testes, todos aprovados.
+- Suítes Android/JVM: 28 testes, sem falhas ou erros.
+- `:app:assembleRelease :app:lintDebug`: aprovado.
 - `git diff --check`: sem erros de whitespace.
+- S23 Ultra: instalação por ADB wireless, versão 3.5.0/código 29, reconexão automática e interface Live verificadas.
 
-APK de distribuição gerado em `apk/Punk-3.4.0.apk`.
+APK de distribuição gerado em `apk/Punk-3.5.0.apk`.
 
 Referência usada para a migração e consultas assíncronas do Room: [documentação oficial Android](https://developer.android.com/training/data-storage/room/accessing-data).

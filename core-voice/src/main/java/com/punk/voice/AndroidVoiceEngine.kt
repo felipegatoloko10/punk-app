@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -27,7 +28,13 @@ sealed interface VoiceStatus {
     data class Speaking(val text: String) : VoiceStatus
     data class Error(val code: Int, val message: String) : VoiceStatus
 }
-data class VoiceAvailability(val recognitionAvailable: Boolean, val ttsReady: Boolean, val initializing: Boolean)
+data class VoiceAvailability(
+    val recognitionAvailable: Boolean,
+    val ttsReady: Boolean,
+    val initializing: Boolean,
+    val onDeviceRecognitionAvailable: Boolean = false,
+    val recognizerMode: String = "system"
+)
 
 /** One main-thread owner for recognition, audio focus and TTS; no transcript logging. */
 class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
@@ -49,7 +56,7 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
     val amplitudeFlow = _amplitude.asStateFlow()
     private val _availability = MutableStateFlow(VoiceAvailability(false, false, true))
     val availability: StateFlow<VoiceAvailability> = _availability.asStateFlow()
-    private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+    private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
         .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         .setOnAudioFocusChangeListener { change -> if (change < 0) { cancelListening(); stopSpeaking() } }
         .build()
@@ -57,13 +64,14 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
     init {
         main {
             val available = SpeechRecognizer.isRecognitionAvailable(context)
-            _availability.value = VoiceAvailability(available, false, true)
+            val onDevice = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+            _availability.value = VoiceAvailability(available, false, true, onDevice)
             tts = TextToSpeech(context.applicationContext) { result ->
                 handler.post {
                     if (destroyed) return@post
                     val language = if (result == TextToSpeech.SUCCESS) tts?.setLanguage(Locale("pt", "BR")) else null
                     ttsReady = result == TextToSpeech.SUCCESS && language != null && language >= TextToSpeech.LANG_AVAILABLE
-                    _availability.value = VoiceAvailability(available, ttsReady, false)
+                    _availability.value = VoiceAvailability(available, ttsReady, false, onDevice)
                     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(id: String?) {}
                         override fun onDone(id: String?) { main { finishUtterance(id, null) } }
@@ -97,13 +105,25 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
     override suspend fun startListening(onPartial: (String) -> Unit, onFinal: (String) -> Unit) {
         startListeningWithCallbacks(onPartial, onFinal)
     }
-    fun startListeningWithCallbacks(onPartial: (String) -> Unit, onFinal: (String) -> Unit, onError: ((String) -> Unit)? = null) {
+    fun startListeningWithCallbacks(
+        onPartial: (String) -> Unit,
+        onFinal: (String) -> Unit,
+        onError: ((String) -> Unit)? = null,
+        preferOnDevice: Boolean = true,
+        allowSystemFallback: Boolean = true
+    ) {
         main {
             if (destroyed) { onError?.invoke("Motor de voz encerrado"); return@main }
             if (listening || recognizer != null) return@main
             stopSpeaking()
             val available = SpeechRecognizer.isRecognitionAvailable(context)
-            _availability.value = _availability.value.copy(recognitionAvailable = available)
+            val onDeviceAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+            val useOnDevice = preferOnDevice && onDeviceAvailable
+            _availability.value = _availability.value.copy(
+                recognitionAvailable = available,
+                onDeviceRecognitionAvailable = onDeviceAvailable,
+                recognizerMode = if (useOnDevice) "on_device" else "system"
+            )
             if (!available) {
                 val error = "Reconhecimento de voz indisponível. Ative um serviço de voz nas configurações do Android."
                 _status.value = VoiceStatus.Error(-1, error); onError?.invoke(error); return@main
@@ -114,7 +134,11 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
             }
             try {
                 val currentGeneration = ++generation
-                recognizer = SpeechRecognizer.createSpeechRecognizer(context.applicationContext).apply {
+                recognizer = (if (useOnDevice && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    SpeechRecognizer.createOnDeviceSpeechRecognizer(context.applicationContext)
+                } else {
+                    SpeechRecognizer.createSpeechRecognizer(context.applicationContext)
+                }).apply {
                     setRecognitionListener(object : RecognitionListener {
                         private fun current() = currentGeneration == generation && !destroyed
                         override fun onReadyForSpeech(params: Bundle?) { if (current()) { listening = true; _status.value = VoiceStatus.Listening } }
@@ -125,6 +149,19 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
                         override fun onError(error: Int) {
                             if (!current()) return
                             finishRecognition()
+                            if (useOnDevice && allowSystemFallback && error in setOf(
+                                    SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,
+                                    SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE,
+                                    SpeechRecognizer.ERROR_SERVER,
+                                    SpeechRecognizer.ERROR_SERVER_DISCONNECTED,
+                                    SpeechRecognizer.ERROR_CLIENT
+                                )) {
+                                _status.value = VoiceStatus.Ready
+                                handler.postDelayed({
+                                    startListeningWithCallbacks(onPartial, onFinal, onError, preferOnDevice = false, allowSystemFallback = false)
+                                }, 450)
+                                return
+                            }
                             val message = "${getErrorMessage(error)} (código $error)"
                             _status.value = VoiceStatus.Error(error,message); onError?.invoke(message)
                         }
@@ -148,9 +185,13 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
                         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                         putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+                        putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, useOnDevice)
+                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 350L)
+                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 650L)
+                        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 950L)
                     })
                 }
-                listening = true
+                listening = false
                 _status.value = VoiceStatus.Ready
                 recognitionTimeout = Runnable {
                     if (generation == currentGeneration) {
