@@ -22,7 +22,7 @@ PC pairing command prints `{version:3,host,port,useTls:true,certificateFingerpri
 - Client `tool_result`: `{callId,ok,result?,error?}`. `ok:false` remains failure through every wrapper. Duplicate results ignored.
 - Client `accessibility_event`: `{seq,timestamp,type,package,class?,windowId?,text?,description?,conversationId?,droppedSinceLast?}`. Events are rate-limited and deduplicated on Android, kept in a bounded in-memory buffer and never inserted into an agent prompt automatically.
 - Client `voice_partial`: `{sessionId,conversationId,text,wakePhraseArmed,timestamp}`. This is transient local-STT telemetry; raw audio is never sent.
-- Client `voice_session`: `{sessionId,conversationId,event,phase,wakePhraseEnabled,onDeviceRecognition,bargeInSupported,batteryAtStart,batteryNow,timestamp}` where event is `started|stopped|submitted|armed|barge_in|wake_phrase`.
+- Client `voice_session`: `{sessionId,conversationId,event,source?,phase,wakePhraseEnabled,onDeviceRecognition,bargeInSupported,batteryAtStart,batteryNow,timestamp}` where event is `started|stopped|submitted|armed|barge_in|wake_phrase|speaking|playback_finished|send_failed`. The latest voice session is cleared when its WebSocket disconnects or is replaced; a stale session must not remain active after an app update.
 - Client `ping` → server `pong`. Server errors `{code,message,requestId?}`. No plaintext command contents or secrets are logged.
 
 Server events are persisted with a monotonic per-device `seq`; reconnect hello replays events above lastSeq (max 1000 per connection; fetch history for older state). `GET /api/conversations/{conversationId}/messages` returns `{messages:[{messageId,role,text,status,createdAt}],lastSeq}` scoped to device. HTTP `GET /api/status` returns health and mode.

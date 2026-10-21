@@ -305,6 +305,7 @@ class Bridge:
             if old and old is not ws:
                 await old.close(code=1000, message=b'Replaced by new device connection')
             self.sockets[device] = ws
+            self.voice_sessions.pop(device, None)
             tools = payload.get('tools', [])
             self.catalogs[device] = {x['name'] for x in tools if isinstance(x, dict) and isinstance(x.get('name'), str)}
             await ws.send_json({'id': hello.get('id', uid()), 'type': 'hello_ack', 'payload': {'protocolVersion': 3, 'deviceId': device, 'authenticated': True, 'supervised': self.supervised, 'health': await self.health(), 'lastSeq': self.store.last_seq(device)}})
@@ -324,6 +325,7 @@ class Bridge:
             if self.sockets.get(device) is ws:
                 self.sockets.pop(device, None)
                 self.catalogs.pop(device, None)
+                self.voice_sessions.pop(device, None)
                 for call_id, entry in list(self.pending_calls.items()):
                     if entry['device'] == device and not entry['future'].done():
                         entry['future'].set_result({'ok': False, 'error': 'Phone disconnected'})
@@ -410,13 +412,15 @@ class Bridge:
             }
         elif kind == 'voice_session':
             event = str(p.get('event', ''))
-            if event not in {'started', 'stopped', 'submitted', 'armed', 'barge_in', 'wake_phrase'}:
+            if event not in {'started', 'stopped', 'submitted', 'armed', 'barge_in', 'wake_phrase',
+                             'speaking', 'playback_finished', 'send_failed'}:
                 raise ValueError()
             self.voice_sessions[device] = {
                 'active': event != 'stopped',
                 'sessionId': str(p.get('sessionId', ''))[:128],
                 'conversationId': str(p.get('conversationId', 'default'))[:128],
                 'event': event,
+                'source': str(p.get('source', 'service'))[:40],
                 'phase': str(p.get('phase', ''))[:40],
                 'wakePhraseEnabled': p.get('wakePhraseEnabled') is True,
                 'onDeviceRecognition': p.get('onDeviceRecognition') is True,

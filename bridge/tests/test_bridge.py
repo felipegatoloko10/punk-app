@@ -246,7 +246,26 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body['voice']['partial'], 'abra o mapa')
         self.assertTrue(body['voice']['wakePhraseArmed'])
         self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM messages').fetchone()[0], 0)
+        for event, phase in [('speaking', 'speaking'), ('playback_finished', 'speaking'),
+                             ('send_failed', 'error'), ('stopped', 'idle')]:
+            await ws.send_json({'type': 'voice_session', 'payload': {
+                'sessionId': 'session-1', 'conversationId': 'conversation-1',
+                'event': event, 'phase': phase, 'source': 'service', 'bargeInSupported': False}})
+            await ws.send_json({'type': 'status_request', 'payload': {}})
+            update = await ws.receive_json(timeout=5)
+            self.assertEqual(update['type'], 'health_update')  # No invalid_request before health.
+            self.assertEqual(update['payload']['health']['voiceLive'], event != 'stopped')
+            self.assertEqual(self.bridge.voice_sessions[self.device]['event'], event)
+        await ws.send_json({'type': 'voice_session', 'payload': {'event': 'started'}})
+        await ws.send_json({'type': 'status_request', 'payload': {}})
+        await ws.receive_json(timeout=5)
+        self.assertTrue(self.bridge.voice_sessions[self.device]['active'])
         await ws.close()
+        for _ in range(50):
+            if self.device not in self.bridge.voice_sessions:
+                break
+            await asyncio.sleep(0.01)
+        self.assertNotIn(self.device, self.bridge.voice_sessions)
 
 
 class PureTests(unittest.TestCase):
