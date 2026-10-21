@@ -1,14 +1,14 @@
-# Punk · 3.1.1
+# Punk · 3.2.0
 
 **Seu agente no computador e no Android, em uma única conversa.**
 
-[Baixar APK](apk/Punk-3.1.1.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.1.1-validation.json) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
+[Baixar APK](apk/Punk-3.2.0.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.2.0-validation.json) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
 
 Aplicativo Android nativo para conversar com o seu Punk e usar as ferramentas do Hermes no computador e no celular. Interface em português, com fundo grafite, destaque ciano e três áreas: **Conversa**, **Dispositivos** e **Atividade**.
 
 ## Instalar no celular
 
-O APK está em [`apk/Punk-3.1.1.apk`](apk/Punk-3.1.1.apk), versão 3.1.1, código 26, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura do APK 3.0.0, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
+O APK está em [`apk/Punk-3.2.0.apk`](apk/Punk-3.2.0.apk), versão 3.2.0, código 27, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura do APK 3.0.0, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
 
 1. Copie o APK para o S23 Ultra e instale.
 2. No PC, execute `bridge/INICIAR-PUNK.ps1` para iniciar o novo bridge.
@@ -27,11 +27,17 @@ Em uma instalação nova no computador, siga primeiro a [provisão do bridge](br
 - Reconhecimento de voz corrigido para não iniciar e ser cancelado pelo primeiro toque. O microfone só começa quando **Falar** é pressionado, não disputa foco exclusivo com o próprio serviço de reconhecimento e exibe o código real de falha quando o Android recusa a sessão.
 - Cartões de dispositivos e permissões com estado real. A aba Atividade agora mostra duração, origem, status técnico, ID, última atualização, entradas e resultados sanitizados das ferramentas.
 - Diagnóstico ADB em tempo real: o app separa “Depuração USB ativada” de “PC conectado e autorizado”. O bridge verifica o `adb devices` local a cada dez segundos e informa conectado, aguardando autorização, offline, ausente ou erro sem transmitir o serial do aparelho.
+- Diagnóstico local independente: **Shizuku · ADB local** mostra quando o serviço privilegiado está ativo e autorizado no próprio celular, sem confundir esse estado com o ADB do computador.
 - Reconciliação de atividades órfãs: execuções que ficaram sem confirmação após reinício ou perda de sessão deixam de aparecer eternamente como “em andamento”.
 - Autonomia por padrão. O modo supervisionado pede aprovação antes de ferramentas de alteração ou comportamento indeterminado; vale para o canal mobile, sem alterar a política dos outros canais.
 - Comandos explícitos: `/supervisionado`, `/autonomo`, `/parar`; na voz, “Punk, peça confirmação antes de agir”, “Punk, volte ao modo autônomo” e “Punk, para tudo”.
 - Parada de execuções locais e solicitação de cancelamento remoto. A confirmação remota espera as tarefas e os recursos encerrarem; falha de parada permanece visível.
-- Catálogo de 43 ferramentas Android com schemas, validação, callbacks de gestos, tratamento de falhas e cancelamento.
+- Árvore de interface estruturada em JSON com texto sanitizado, ID, classe, hierarquia, limites, estado e ações de cada nó. Campos de senha nunca têm o conteúdo exposto.
+- Busca de elementos por texto, descrição ou ID; `find_and_click` repete a busca, rola a tela de forma limitada e clica no ancestral acionável, reduzindo a dependência de coordenadas fixas.
+- Buffer sequencial de eventos de acessibilidade para detectar troca de janela, diálogos e mudanças de conteúdo sem capturar screenshots continuamente.
+- OCR local da tela com o modelo latino do ML Kit: retorna texto, blocos, linhas, elementos e coordenadas sem enviar a imagem a um serviço externo.
+- Notificações acionáveis: além de listar, o Hermes pode abrir, dispensar e responder inline quando o aplicativo de origem oferece `RemoteInput`.
+- Catálogo de 50 ferramentas Android com schemas, validação, callbacks de gestos, tratamento de falhas e cancelamento.
 - Anexos originais com chunks, progresso, retomada e SHA-256; limite de 512 MB por arquivo e cinco anexos por pedido. Recebimento de arquivos do PC na conversa.
 - Credenciais Android protegidas pelo Keystore, autenticação separada no PC e auditoria com dados sensíveis removidos e cadeia de integridade.
 
@@ -45,13 +51,13 @@ O plugin `punk_control` aplica a política de execução independentemente do mo
 
 ## Limites e validação
 
-O controle é limitado às permissões concedidas pelo Android, acessibilidade e Shizuku sem root, e aos acessos da sessão Windows do Hermes. Telas protegidas, dados privados de outros aplicativos, janelas elevadas e operações em segundo plano podem ser restritos. Captura de câmera/microfone exige o Punk visível nesta versão.
+O controle é limitado às permissões concedidas pelo Android, acessibilidade e Shizuku sem root, e aos acessos da sessão Windows do Hermes. Telas protegidas, dados privados de outros aplicativos, janelas elevadas e operações em segundo plano podem ser restritos. Captura de câmera/microfone exige o Punk visível nesta versão. Resposta de notificação só funciona quando a própria notificação expõe uma ação de resposta direta.
 
 O modo Live usa os mecanismos STT/TTS instalados no Android e funciona por turnos; ainda não é full-duplex e não interrompe a fala do assistente por voz. Wake word permanente, overlay e modos avançados de câmera ficam para evolução posterior. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
 
 Validação desta versão: **23 testes Android e 16 testes Python passaram**, release assinada e lint sem erros bloqueantes. Foram exercitados política, cancelamento, replay, contratos de ferramentas, privacidade, auditoria, interpretação dos estados do ADB e atualização de saúde pelo WebSocket. Os testes do bridge usam TLS real e Hermes simulado. Também passou um teste separado com o Hermes local real: autenticação, envio de pedido e recebimento de `PUNK_OK` por streaming. As bibliotecas nativas do APK foram verificadas quanto ao alinhamento de página.
 
-**O Windows ainda não enumerou o S23 Ultra no ADB nesta execução:** tanto o Platform Tools do WinGet quanto o SDK local retornaram a lista vazia. Depois de selecionar transferência de arquivos e aceitar a chave RSA no celular, o novo cartão deve mudar para **Conectado e autorizado** em até dez segundos.
+O Shizuku foi verificado no aparelho em execução via ADB wireless, autorizado e operando como UID 2000 (`shell`). Isso não significa que o Windows tenha enumerado o telefone: o cartão **ADB com o PC** continua sendo um diagnóstico separado e pode permanecer desconectado sem impedir as ferramentas locais via Shizuku.
 
 ## Compilar e testar
 
@@ -80,4 +86,4 @@ python -m unittest discover -s tests -v
 | `core-security` | Auditoria e integridade |
 | `bridge` | Servidor Python e plugin de integração com o Hermes |
 
-O histórico Git mantém as versões anteriores. Os APKs antigos na pasta `apk/` são históricos; use **Punk-3.1.1.apk** para esta versão.
+O histórico Git mantém as versões anteriores. Os APKs antigos na pasta `apk/` são históricos; use **Punk-3.2.0.apk** para esta versão.

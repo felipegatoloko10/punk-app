@@ -11,6 +11,17 @@
 - O botão **Falar** não é mais disputado por uma escuta automática ao abrir a tela. A sessão agora informa o código de erro do Android e não exige foco de áudio exclusivo para reconhecer a fala.
 - A tela Dispositivos separa a depuração USB local do vínculo ADB real com o computador. O bridge consulta o Platform Tools periodicamente e não envia o serial do aparelho ao app.
 
+### Entregue na versão 3.2.0
+
+- `screen_dump` agora devolve uma árvore JSON com hierarquia, texto, descrição, ID, classe, limites, estado e ações disponíveis; conteúdo de campos de senha é substituído.
+- `find_element` localiza candidatos por texto, descrição ou ID e informa pontuação e limites.
+- `find_and_click` tenta novamente, rola a tela de forma limitada e sobe até o ancestral clicável antes de agir.
+- `accessibility_events` expõe um buffer sequencial de mudanças de janela e conteúdo, evitando screenshots ou `uiautomator` contínuos.
+- `ocr_screen` captura a tela pelo Shizuku e executa reconhecimento local com ML Kit, retornando texto e coordenadas; a imagem temporária é apagada no bloco de finalização.
+- As notificações agora têm chave, categoria e capacidades. Quando permitido pelo app de origem, o Hermes pode abrir, dispensar ou responder por `RemoteInput`.
+- O cartão do aparelho identifica **Shizuku · ADB local** separadamente do **ADB com o PC**. O aparelho de teste confirmou Shizuku autorizado como UID 2000 (`shell`).
+- O catálogo passou de 43 para 50 ferramentas com schemas e validação correspondentes.
+
 ## Diagnóstico da paridade com o Telegram
 
 Na instalação atual, o perfil padrão do Hermes e o perfil `punk-mobile` já apontam para:
@@ -51,10 +62,39 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 
 ### P0 — percepção e automação robusta no Android
 
-- `ui_dump` estruturado e sanitizado a partir de `AccessibilityNodeInfo`, com texto, id, classe, bounds e ações disponíveis.
-- `find_and_click` por texto/id com espera, scroll limitado, confirmação do alvo e evidência do resultado. É a melhoria com maior impacto para abandonar coordenadas frágeis.
-- Eventos de acessibilidade em stream com limitação de frequência e escopo por sessão, permitindo reagir a mudança de janela, diálogo e app ativo sem polling constante.
+- **Concluído em 3.2.0:** `ui_dump` estruturado e sanitizado a partir de `AccessibilityNodeInfo`, com texto, id, classe, bounds e ações disponíveis.
+- **Concluído em 3.2.0:** `find_and_click` por texto/id com espera, scroll limitado e identificação do alvo. É a melhoria com maior impacto para abandonar coordenadas frágeis.
+- **Parcial em 3.2.0:** eventos de acessibilidade ficam em buffer sequencial consultável; o push contínuo, com limitação de frequência e escopo por sessão, ainda será conectado ao bridge.
+- **Concluído em 3.2.0:** OCR local do conteúdo visível, sem upload da captura.
+- **Concluído em 3.2.0:** leitura, abertura, dispensa e resposta inline de notificações compatíveis.
 - Abrir apps, deep links, rotas e folhas de compartilhamento por intents validadas. Intents arbitrárias devem continuar bloqueadas ou exigir confirmação.
+
+### 3.3 — ação e dados pessoais
+
+- Gestos avançados via `dispatchGesture`: toque longo, arrastar e soltar, curvas, pinça/zoom e multitouch, todos com limites de tela e timeout.
+- Intents tipadas: pacote, deep link, rota no Maps, compartilhamento, seletor de arquivo e alarmes; sem aceitar um `Intent` arbitrário vindo do modelo.
+- Gerenciador de arquivos em armazenamento compartilhado: listar, buscar, ler, copiar, mover, excluir para lixeira e transferir pelo bridge com hash e progresso.
+- Contatos e agenda: consultar/criar/editar contatos, eventos, lembretes e alarmes com resultado verificável.
+- Caixa SMS completa: ler conversas e responder, mantendo o envio explícito e auditado. O histórico de chamadas continua somente leitura e a chamada direta permanece uma ação sensível.
+
+### 3.4 — administração privilegiada de alto risco
+
+- Controles via Shizuku: Wi-Fi, Bluetooth, dados móveis, modo avião, brilho, volume, não perturbe, rotação e economia, sempre confirmando o estado final.
+- Gestão de aplicativos: listar detalhes, instalar/atualizar APK, desinstalar, `force-stop`, limpar cache e conceder/revogar permissões. Limpar dados fica separado de limpar cache porque destrói sessões e conteúdo.
+- Energia e bloqueio: acordar, bloquear e navegar na tela bloqueada. PIN opcional somente cifrado pelo Android Keystore, nunca incluído em logs, catálogo ou bridge.
+- Política própria para ações destrutivas: confirmação por ação ou sessão, alvo exibido antes da execução, trilha de auditoria e evidência posterior. O modo autônomo geral não elimina essa barreira.
+
+### 3.5 — Live de baixa latência
+
+- Serviço foreground de voz iniciado pelo usuário, transcrição parcial, detecção de fim de fala, redução de ruído e barge-in para interromper o TTS.
+- Wake word offline opcional com Vosk ou Porcupine, indicador persistente de microfone, medição de bateria e botão único para desligar.
+- Áudio e texto em streaming no mesmo contexto da conversa, com reconexão, cancelamento e fallback para o modo por turnos já existente.
+
+### 4.0 — autonomia orientada por eventos
+
+- Regras como “quando chegar em casa”, “ao receber notificação X” ou “todo dia às 8h”, com condições, janela de execução e histórico.
+- Modo missão para objetivos longos: plano, checkpoints, orçamento, recuperação após falha e confirmação antes de passos destrutivos.
+- Gatilhos de acessibilidade/notificação enviados ao bridge sem polling, com filtros locais para não transmitir eventos irrelevantes.
 
 ### P1 — chat de nível profissional
 
@@ -121,6 +161,6 @@ Nesse estágio, a recomendação é manter conteúdo sensível e credenciais for
 - `:app:assembleDebug`: aprovado.
 - `git diff --check`: sem erros de whitespace.
 
-APK de distribuição gerado em `apk/Punk-3.1.1.apk`.
+APK de distribuição gerado em `apk/Punk-3.2.0.apk`.
 
 Referência usada para a migração e consultas assíncronas do Room: [documentação oficial Android](https://developer.android.com/training/data-storage/room/accessing-data).

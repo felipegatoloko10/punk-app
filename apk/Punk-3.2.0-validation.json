@@ -1,0 +1,16 @@
+{
+  "apk": "Punk-3.2.0.apk",
+  "versionName": "3.2.0",
+  "versionCode": 27,
+  "bytes": 29287968,
+  "sha256": "40947ad8e16648da980a61e3c614f840d507066e6e404e4ba817fe8444d6f411",
+  "androidTests": 23,
+  "testFailures": 0,
+  "bridgeTests": 16,
+  "lintBlockingErrors": 0,
+  "signatureSchemeV2": true,
+  "physicalDeviceTested": false,
+  "shizukuVerified": true,
+  "shizukuUid": 2000,
+  "pcAdbEnumerated": false
+}

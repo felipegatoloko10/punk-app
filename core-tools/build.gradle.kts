@@ -30,5 +30,6 @@ dependencies {
     implementation(project(":core-bridge"))
     implementation(project(":core-accessibility"))
     implementation("androidx.core:core-ktx:1.12.0")
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 
 }

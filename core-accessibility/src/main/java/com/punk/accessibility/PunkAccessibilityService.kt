@@ -10,10 +10,18 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.os.Handler
 import android.os.Looper
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 
 class PunkAccessibilityService : AccessibilityService() {
@@ -31,7 +39,9 @@ class PunkAccessibilityService : AccessibilityService() {
     }
 
     private val activeGestures = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
-    private val gestureSequence = java.util.concurrent.atomic.AtomicLong()
+    private val gestureSequence = AtomicLong()
+    private val eventSequence = AtomicLong()
+    private val eventBuffer = ConcurrentLinkedDeque<JsonObject>()
     private var lastVolumeDownTime = 0L
 
     override fun onKeyEvent(event: android.view.KeyEvent?): Boolean {
@@ -50,7 +60,24 @@ class PunkAccessibilityService : AccessibilityService() {
         return super.onKeyEvent(event)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        event ?: return
+        val password = runCatching { event.source?.isPassword == true }.getOrDefault(false)
+        val item = buildJsonObject {
+            put("seq", eventSequence.incrementAndGet())
+            put("timestamp", System.currentTimeMillis())
+            put("eventTime", event.eventTime)
+            put("type", AccessibilityEvent.eventTypeToString(event.eventType))
+            put("package", event.packageName?.toString().orEmpty())
+            put("class", event.className?.toString().orEmpty())
+            put("windowId", event.windowId)
+            put("contentChangeTypes", event.contentChangeTypes)
+            put("text", if (password) "[protegido]" else event.text.joinToString(" ").take(500))
+            put("description", if (password) "" else event.contentDescription?.toString().orEmpty().take(500))
+        }
+        eventBuffer.addFirst(item)
+        while (eventBuffer.size > 200) eventBuffer.pollLast()
+    }
 
     override fun onInterrupt() {}
 
@@ -88,6 +115,161 @@ class PunkAccessibilityService : AccessibilityService() {
         }
         dfs(root, 0)
         return sb.toString().ifBlank { "(tela vazia ou sem nós úteis)" }.take(12000)
+    }
+
+    fun snapshotJson(maxNodes: Int = 220, maxDepth: Int = 18): JsonObject {
+        val root = rootInActiveWindow ?: return buildJsonObject { put("ok", false); put("error", "sem janela ativa") }
+        val nodes = mutableListOf<JsonObject>()
+        var visited = 0
+        var truncated = false
+        fun dfs(node: AccessibilityNodeInfo, parent: Int?, depth: Int) {
+            if (visited >= maxNodes.coerceIn(1, 500)) { truncated = true; return }
+            if (depth > maxDepth.coerceIn(1, 30)) { truncated = true; return }
+            val index = visited++
+            val bounds = Rect().also(node::getBoundsInScreen)
+            val password = node.isPassword
+            nodes += buildJsonObject {
+                put("index", index)
+                if (parent != null) put("parent", parent)
+                put("depth", depth)
+                put("package", node.packageName?.toString().orEmpty())
+                put("class", node.className?.toString().orEmpty())
+                put("viewId", node.viewIdResourceName.orEmpty())
+                put("text", if (password) "[protegido]" else node.text?.toString().orEmpty().take(500))
+                put("description", if (password) "" else node.contentDescription?.toString().orEmpty().take(500))
+                put("bounds", buildJsonObject {
+                    put("left", bounds.left); put("top", bounds.top); put("right", bounds.right); put("bottom", bounds.bottom)
+                })
+                put("clickable", node.isClickable); put("longClickable", node.isLongClickable)
+                put("editable", node.isEditable); put("scrollable", node.isScrollable)
+                put("enabled", node.isEnabled); put("focusable", node.isFocusable); put("focused", node.isFocused)
+                put("selected", node.isSelected); put("checkable", node.isCheckable); put("checked", node.isChecked)
+                put("password", password)
+                put("actions", buildJsonArray {
+                    node.actionList.take(24).forEach { action ->
+                        add(buildJsonObject { put("id", action.id); put("label", action.label?.toString().orEmpty()) })
+                    }
+                })
+            }
+            for (childIndex in 0 until node.childCount) {
+                if (visited >= maxNodes) { truncated = true; break }
+                node.getChild(childIndex)?.let { dfs(it, index, depth + 1) }
+            }
+        }
+        dfs(root, null, 0)
+        return buildJsonObject {
+            put("ok", true)
+            put("timestamp", System.currentTimeMillis())
+            put("package", root.packageName?.toString().orEmpty())
+            put("windowId", root.windowId)
+            put("nodeCount", nodes.size)
+            put("truncated", truncated)
+            put("nodes", JsonArray(nodes))
+        }
+    }
+
+    fun recentEvents(sinceSeq: Long = 0L, limit: Int = 50): JsonObject {
+        val events = eventBuffer.asSequence()
+            .filter { (it["seq"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toLongOrNull()?.let { seq -> seq > sinceSeq } == true }
+            .take(limit.coerceIn(1, 200))
+            .toList()
+        return buildJsonObject {
+            put("ok", true)
+            put("latestSeq", eventSequence.get())
+            put("count", events.size)
+            put("events", JsonArray(events))
+        }
+    }
+
+    private data class NodeCandidate(val node: AccessibilityNodeInfo, val score: Int, val matchedBy: String)
+
+    private fun candidates(query: String, byId: Boolean?, exact: Boolean): List<NodeCandidate> {
+        val root = rootInActiveWindow ?: return emptyList()
+        val wanted = query.trim().lowercase()
+        if (wanted.isBlank()) return emptyList()
+        val found = mutableListOf<NodeCandidate>()
+        fun score(node: AccessibilityNodeInfo): NodeCandidate? {
+            val id = node.viewIdResourceName.orEmpty().lowercase()
+            val shortId = id.substringAfterLast('/')
+            val text = if (node.isPassword) "" else node.text?.toString().orEmpty().trim().lowercase()
+            val desc = if (node.isPassword) "" else node.contentDescription?.toString().orEmpty().trim().lowercase()
+            val idMatch = id == wanted || shortId == wanted || (!exact && (id.contains(wanted) || shortId.contains(wanted)))
+            val textMatch = text == wanted || (!exact && text.contains(wanted))
+            val descMatch = desc == wanted || (!exact && desc.contains(wanted))
+            if (
+                (byId == true && !idMatch) ||
+                (byId == false && !textMatch && !descMatch) ||
+                (byId == null && !idMatch && !textMatch && !descMatch)
+            ) return null
+            val matchedBy = when { idMatch -> "id"; textMatch -> "text"; else -> "description" }
+            val matchScore = when {
+                id == wanted || shortId == wanted -> 140
+                text == wanted -> 130
+                desc == wanted -> 120
+                idMatch -> 100
+                textMatch -> 90
+                else -> 80
+            } + (if (node.isClickable) 20 else 0) + (if (node.isEnabled) 5 else 0)
+            return NodeCandidate(node, matchScore, matchedBy)
+        }
+        fun walk(node: AccessibilityNodeInfo) {
+            score(node)?.let(found::add)
+            for (i in 0 until node.childCount) node.getChild(i)?.let(::walk)
+        }
+        walk(root)
+        return found.sortedByDescending(NodeCandidate::score)
+    }
+
+    fun findNodes(query: String, byId: Boolean? = null, exact: Boolean = false, limit: Int = 10): JsonObject {
+        val matches = candidates(query, byId, exact).take(limit.coerceIn(1, 50))
+        return buildJsonObject {
+            put("ok", true); put("query", query); put("count", matches.size)
+            put("matches", buildJsonArray {
+                matches.forEach { candidate ->
+                    val node = candidate.node
+                    val bounds = Rect().also(node::getBoundsInScreen)
+                    add(buildJsonObject {
+                        put("matchedBy", candidate.matchedBy); put("score", candidate.score)
+                        put("text", if (node.isPassword) "[protegido]" else node.text?.toString().orEmpty().take(300))
+                        put("description", if (node.isPassword) "" else node.contentDescription?.toString().orEmpty().take(300))
+                        put("viewId", node.viewIdResourceName.orEmpty()); put("class", node.className?.toString().orEmpty())
+                        put("clickable", node.isClickable); put("enabled", node.isEnabled)
+                        put("bounds", buildJsonObject { put("left",bounds.left); put("top",bounds.top); put("right",bounds.right); put("bottom",bounds.bottom) })
+                    })
+                }
+            })
+        }
+    }
+
+    suspend fun findAndClick(query: String, byId: Boolean? = null, exact: Boolean = false,
+                             retries: Int = 2, scrolls: Int = 2, direction: String = "down"): JsonObject {
+        var attempts = 0
+        var performedScrolls = 0
+        repeat(retries.coerceIn(0, 5) + 1) {
+            attempts++
+            val result = withContext(Dispatchers.Main.immediate) {
+                val candidate = candidates(query, byId, exact).firstOrNull()
+                if (candidate == null) null else {
+                    var target: AccessibilityNodeInfo? = candidate.node
+                    while (target != null && !target.isClickable) target = target.parent
+                    val clicked = target?.takeIf { it.isEnabled }?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+                    Triple(clicked, candidate.matchedBy, candidate.score)
+                }
+            }
+            if (result?.first == true) return buildJsonObject {
+                put("ok", true); put("query", query); put("attempts", attempts); put("scrolls", performedScrolls)
+                put("matchedBy", result.second); put("score", result.third)
+            }
+            if (performedScrolls < scrolls.coerceIn(0, 8)) {
+                val moved = withContext(Dispatchers.Main.immediate) { scroll(direction) }
+                if (moved) performedScrolls++
+            }
+            delay(350)
+        }
+        return buildJsonObject {
+            put("ok", false); put("query", query); put("attempts", attempts); put("scrolls", performedScrolls)
+            put("error", "Elemento não encontrado ou não clicável")
+        }
     }
 
     suspend fun performTap(x: Int, y: Int): Boolean {

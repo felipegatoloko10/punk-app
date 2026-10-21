@@ -29,9 +29,11 @@ class ToolContractsTest {
         assertNull(ToolContracts.validate("set_wifi",args("{\"enabled\":false}")))
     }
     @Test fun catalogContainsEveryToolAndRejectsUnknownArguments() {
-        assertEquals(43,ToolContracts.schemas.size)
+        assertEquals(50,ToolContracts.schemas.size)
         assertTrue(ToolContracts.schemas.values.all { it["type"]?.jsonPrimitive?.content == "object" })
         assertNotNull(ToolContracts.validate("device_status",args("{\"command\":\"reboot\"}")))
+        assertNull(ToolContracts.validate("find_and_click",args("{\"query\":\"Enviar\",\"scrolls\":2}")))
+        assertNotNull(ToolContracts.validate("notification_reply",args("{\"key\":\"n1\"}")))
     }
     @Test fun otpAndFinancialNotificationsNeverLeaveRawCodes() {
         assertEquals("[Conteúdo protegido]",NotificationPrivacy.protect("Seu código é 124578"))

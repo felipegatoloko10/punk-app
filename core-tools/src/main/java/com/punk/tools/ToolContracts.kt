@@ -43,6 +43,9 @@ internal object ToolContracts {
         "list_contacts" to contract("limit" to limit, "filter" to text("Parte do nome", 200, true)),
         "list_calls" to contract("limit" to limit),
         "list_notifications" to contract("limit" to limit),
+        "notification_reply" to contract("key" to text("Chave retornada por list_notifications", 1000), "message" to text("Resposta", 5000), required = listOf("key", "message")),
+        "notification_dismiss" to contract("key" to text("Chave retornada por list_notifications", 1000), required = listOf("key")),
+        "notification_open" to contract("key" to text("Chave retornada por list_notifications", 1000), required = listOf("key")),
         "dial_phone" to contract("phone" to phone, "direct" to boolean("Iniciar chamada diretamente; padrão false"), required = listOf("phone")),
         "open_app" to contract("package" to pkg, required = listOf("package")),
         "force_stop" to contract("package" to pkg, required = listOf("package")),
@@ -52,7 +55,11 @@ internal object ToolContracts {
         "clipboard_set" to contract("text" to text("Texto", 10000, true), required = listOf("text")),
         "clipboard_get" to contract(),
         "global_action" to contract("action" to choice("Ação do Android", "back", "home", "recents", "notifications", "quick_settings", "lock_screen", "screenshot"), required = listOf("action")),
-        "screen_dump" to contract(),
+        "screen_dump" to contract("maxNodes" to integer("Máximo de nós", 1, 500), "maxDepth" to integer("Profundidade máxima", 1, 30)),
+        "find_element" to contract("query" to text("Texto, descrição ou ID do elemento", 1000), "byId" to boolean("true: apenas ID; false: texto/descrição; ausente: ambos"), "exact" to boolean("Exigir correspondência exata"), "limit" to integer("Máximo de resultados", 1, 50), required = listOf("query")),
+        "find_and_click" to contract("query" to text("Texto, descrição ou ID do elemento", 1000), "byId" to boolean("true: apenas ID; false: texto/descrição; ausente: ambos"), "exact" to boolean("Exigir correspondência exata"), "retries" to integer("Novas tentativas", 0, 5), "scrolls" to integer("Rolagens automáticas", 0, 8), "direction" to choice("Direção de busca", "up", "down", "forward", "backward"), required = listOf("query")),
+        "accessibility_events" to contract("sinceSeq" to integer("Retornar eventos posteriores a esta sequência", 0, Int.MAX_VALUE), "limit" to integer("Máximo de eventos", 1, 200)),
+        "ocr_screen" to contract(),
         "input_tap" to contract("x" to coordinate, "y" to coordinate, required = listOf("x", "y")),
         "input_swipe" to contract("x1" to coordinate, "y1" to coordinate, "x2" to coordinate, "y2" to coordinate, "durationMs" to integer("Duração do gesto", 50, 2000), required = listOf("x1", "y1", "x2", "y2")),
         "input_text" to contract("text" to text("Texto Unicode", 10000, true), "clearFirst" to boolean("Substituir texto existente"), required = listOf("text")),
@@ -86,7 +93,7 @@ internal object ToolContracts {
             "dial_phone" -> alias("phone", "number")
             "open_app", "force_stop" -> alias("package", "packageName", "pkg")
             "input_text" -> alias("clearFirst", "clear")
-            "click_node" -> alias("query", "text")
+            "click_node", "find_element", "find_and_click" -> alias("query", "text")
             "shell_exec" -> alias("cmd", "command")
             "camera_capture" -> alias("facing", "lens", "camera")
             "flashlight" -> {

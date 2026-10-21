@@ -117,7 +117,7 @@ fun DevicesScreen(vm:ChatViewModel,onSettings:()->Unit) {
                     }
                     Text(stringResource(R.string.punk_phone_resources),style=MaterialTheme.typography.titleSmall)
                     CapabilityRow(PunkGlyph.Phone,"Controlar a tela","Toques, gestos e leitura da interface",capabilities["accessibility"]==true) { open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-                    CapabilityRow(PunkGlyph.Shield,"Controles do sistema","Conexão e autorização do Shizuku",capabilities["shizuku"]==true) {
+                    CapabilityRow(PunkGlyph.Shield,"Shizuku · ADB local",if(capabilities["shizuku"]==true)"Serviço shell ativo e autorizado neste celular" else "Inicie e autorize o Shizuku para controles privilegiados",capabilities["shizuku"]==true) {
                         try {
                             if(Shizuku.pingBinder())Shizuku.requestPermission(1002)
                             else {
@@ -126,7 +126,7 @@ fun DevicesScreen(vm:ChatViewModel,onSettings:()->Unit) {
                             }
                         } catch(_:Throwable) { scope.launch { snack.showSnackbar("Abra o Shizuku e inicie o serviço antes de autorizar o Punk.") } }
                     }
-                    CapabilityRow(PunkGlyph.Link,"Depuração USB","ADB ativado no Android; a autorização do PC aparece acima",capabilities["adbDebugging"]==true) { open(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+                    CapabilityRow(PunkGlyph.Link,"Depuração do Android","Ativa no celular; a conexão ADB do computador é mostrada separadamente acima",capabilities["adbDebugging"]==true) { open(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
                     CapabilityRow(PunkGlyph.Notification,"Notificações","Consultar notificações dos apps",capabilities["notifications"]==true) { open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
                     CapabilityRow(PunkGlyph.Mic,"Microfone","Pedidos e conversa por voz",capabilities["microphone"]==true) { requestPermissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO)) }
                     CapabilityRow(PunkGlyph.Camera,"Câmera","Capturas solicitadas na conversa",capabilities["camera"]==true) { requestPermissions.launch(arrayOf(Manifest.permission.CAMERA)) }

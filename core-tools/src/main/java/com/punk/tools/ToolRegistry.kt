@@ -48,6 +48,9 @@ object ToolRegistry {
         ToolDef("list_contacts","Lê lista de contatos do telefone","reading","{}"),
         ToolDef("list_calls","Lê histórico de chamadas recentes","reading","{}"),
         ToolDef("list_notifications","Lê notificações recentes recebidas de apps","reading","{}"),
+        ToolDef("notification_reply","Responde uma notificação pela ação inline do app","reversible_write","{}"),
+        ToolDef("notification_dismiss","Dispensa uma notificação ativa","destructive","{}"),
+        ToolDef("notification_open","Abre o conteúdo de uma notificação ativa","reversible_write","{}"),
         ToolDef("dial_phone","Abre discador para número de telefone","reversible_write","{}"),
         ToolDef("open_app","Abre aplicativo pelo pacote","reversible_write","{}"),
         ToolDef("force_stop","Força encerramento de um app (via Shizuku/ADB)","destructive","{}"),
@@ -57,7 +60,11 @@ object ToolRegistry {
         ToolDef("clipboard_set","Copia texto para a área de transferência","reversible_write","{}"),
         ToolDef("clipboard_get","Lê área de transferência","reading","{}"),
         ToolDef("global_action","Executa ação global (home, back, recents, notifications, screenshot)","reversible_write","{}"),
-        ToolDef("screen_dump","Extrai árvore visual da tela atual","reading","{}"),
+        ToolDef("screen_dump","Extrai árvore estruturada da interface atual","reading","{}"),
+        ToolDef("find_element","Busca elementos por texto, descrição ou ID","reading","{}"),
+        ToolDef("find_and_click","Busca, rola automaticamente e clica em um elemento","reversible_write","{}"),
+        ToolDef("accessibility_events","Lê eventos recentes da interface em sequência","reading","{}"),
+        ToolDef("ocr_screen","Reconhece localmente o texto visível na tela","reading","{}"),
         ToolDef("input_tap","Toque em coordenada x,y","reversible_write","{}"),
         ToolDef("input_swipe","Gesto de arrasto entre coordenadas","reversible_write","{}"),
         ToolDef("input_text","Digita texto no campo ativo na tela","reversible_write","{}"),
@@ -87,8 +94,10 @@ object ToolRegistry {
         }) }
     }
 
-    private val sensitiveTools = setOf("audio_record", "camera_capture", "screen_capture_b64", "screen_dump", "screencap",
-        "clipboard_get", "read_sms", "list_contacts", "list_calls", "list_notifications", "get_location", "unlock_device", "shell_exec")
+    private val sensitiveTools = setOf("audio_record", "camera_capture", "screen_capture_b64", "screen_dump", "find_element",
+        "find_and_click", "accessibility_events", "ocr_screen", "screencap", "clipboard_get", "read_sms", "list_contacts",
+        "list_calls", "list_notifications", "notification_reply", "notification_dismiss", "notification_open", "get_location",
+        "unlock_device", "shell_exec")
 
     fun capabilities(ctx: Context): JsonObject {
         val shizuku = AxShell.isShizukuAvailable()
@@ -122,10 +131,10 @@ object ToolRegistry {
                     "read_sms" -> if (permission("smsRead")) null else "Permissão de SMS pendente"
                     "send_sms" -> if (permission("smsSend")) null else "Permissão para enviar SMS pendente"
                     "list_calls" -> if (permission("callLog")) null else "Permissão de chamadas pendente"
-                    "list_notifications" -> if (PunkNotificationListener.isEnabled()) null else "Ative acesso a notificações"
+                    "list_notifications", "notification_reply", "notification_dismiss", "notification_open" -> if (PunkNotificationListener.isEnabled()) null else "Ative acesso a notificações"
                     "screen_dump", "input_tap", "input_swipe", "input_text", "global_action" -> if (accessibility || shizuku) null else "Ative acessibilidade ou Shizuku"
-                    "click_node", "scroll" -> if (accessibility) null else "Ative acessibilidade"
-                    "screen_capture_b64", "screencap", "key_event", "force_stop", "install_apk_silent", "set_wifi", "set_mobile_data", "unlock_device", "dumpsys", "pm_list" -> if (shizuku) null else "Ative e autorize Shizuku"
+                    "find_element", "find_and_click", "accessibility_events", "click_node", "scroll" -> if (accessibility) null else "Ative acessibilidade"
+                    "screen_capture_b64", "ocr_screen", "screencap", "key_event", "force_stop", "install_apk_silent", "set_wifi", "set_mobile_data", "unlock_device", "dumpsys", "pm_list" -> if (shizuku) null else "Ative e autorize Shizuku"
                     "clipboard_get", "clipboard_set" -> if (visible) null else "Abra a sessão do PUNK"
                     else -> null
                 }
@@ -541,10 +550,15 @@ object ToolRegistry {
                 val arr = buildJsonArray {
                     for (n in notifs) {
                         add(buildJsonObject {
+                            put("key", n.key)
+                            put("id", n.id)
                             put("package", n.packageName)
                             put("title", n.title)
                             put("text", n.text)
+                            put("category", n.category)
                             put("postTime", n.postTime)
+                            put("canReply", n.canReply)
+                            put("canDismiss", n.canDismiss)
                         })
                     }
                 }
@@ -553,6 +567,34 @@ object ToolRegistry {
                     put("count", arr.size)
                     put("listener_active", PunkNotificationListener.instance != null)
                     put("notifications", arr)
+                }
+            }
+            "notification_reply" -> {
+                val key = params.getValue("key").jsonPrimitive.content
+                val message = params.getValue("message").jsonPrimitive.content
+                val result = PunkNotificationListener.instance?.reply(key, message)
+                    ?: return buildJsonObject { put("ok", false); put("error", "Acesso a notificações não está ativo") }
+                buildJsonObject {
+                    put("ok", result.isSuccess); put("key", key)
+                    if (result.isFailure) put("error", result.exceptionOrNull()?.message ?: "Não foi possível responder")
+                }
+            }
+            "notification_dismiss" -> {
+                val key = params.getValue("key").jsonPrimitive.content
+                val result = PunkNotificationListener.instance?.dismiss(key)
+                    ?: return buildJsonObject { put("ok", false); put("error", "Acesso a notificações não está ativo") }
+                buildJsonObject {
+                    put("ok", result.isSuccess); put("key", key)
+                    if (result.isFailure) put("error", result.exceptionOrNull()?.message ?: "Não foi possível dispensar")
+                }
+            }
+            "notification_open" -> {
+                val key = params.getValue("key").jsonPrimitive.content
+                val result = PunkNotificationListener.instance?.open(key)
+                    ?: return buildJsonObject { put("ok", false); put("error", "Acesso a notificações não está ativo") }
+                buildJsonObject {
+                    put("ok", result.isSuccess); put("key", key)
+                    if (result.isFailure) put("error", result.exceptionOrNull()?.message ?: "Não foi possível abrir")
                 }
             }
             "dial_phone", "call_phone" -> {
@@ -721,13 +763,13 @@ object ToolRegistry {
                 }
             }
             "screen_dump" -> {
-                val axSnapshot = PunkAccessibilityService.instance?.snapshotCompact()
-                if (!axSnapshot.isNullOrBlank() && !axSnapshot.contains("sem janela ativa")) {
-                    buildJsonObject {
-                        put("ok", true)
-                        put("source", "accessibility")
-                        put("nodes", axSnapshot)
-                    }
+                val maxNodes = params["maxNodes"]?.jsonPrimitive?.intOrNull ?: 220
+                val maxDepth = params["maxDepth"]?.jsonPrimitive?.intOrNull ?: 18
+                val service = PunkAccessibilityService.instance
+                if (service != null) {
+                    JsonObject(service.snapshotJson(maxNodes, maxDepth).toMutableMap().apply {
+                        put("source", JsonPrimitive("accessibility"))
+                    })
                 } else {
                     val raw = AxShell.exec("uiautomator dump /dev/stdout", requirePrivilege = true)
                     buildJsonObject {
@@ -738,6 +780,34 @@ object ToolRegistry {
                     }
                 }
             }
+            "find_element" -> {
+                val query = params.getValue("query").jsonPrimitive.content
+                val byId = params["byId"]?.jsonPrimitive?.booleanOrNull
+                val exact = params["exact"]?.jsonPrimitive?.booleanOrNull ?: false
+                val limit = params["limit"]?.jsonPrimitive?.intOrNull ?: 10
+                val service = PunkAccessibilityService.instance
+                    ?: return buildJsonObject { put("ok", false); put("error", "Serviço de acessibilidade não está ativo") }
+                service.findNodes(query, byId, exact, limit)
+            }
+            "find_and_click" -> {
+                val query = params.getValue("query").jsonPrimitive.content
+                val byId = params["byId"]?.jsonPrimitive?.booleanOrNull
+                val exact = params["exact"]?.jsonPrimitive?.booleanOrNull ?: false
+                val retries = params["retries"]?.jsonPrimitive?.intOrNull ?: 2
+                val scrolls = params["scrolls"]?.jsonPrimitive?.intOrNull ?: 2
+                val direction = params["direction"]?.jsonPrimitive?.content ?: "down"
+                val service = PunkAccessibilityService.instance
+                    ?: return buildJsonObject { put("ok", false); put("error", "Serviço de acessibilidade não está ativo") }
+                service.findAndClick(query, byId, exact, retries, scrolls, direction)
+            }
+            "accessibility_events" -> {
+                val sinceSeq = params["sinceSeq"]?.jsonPrimitive?.longOrNull ?: 0L
+                val limit = params["limit"]?.jsonPrimitive?.intOrNull ?: 50
+                val service = PunkAccessibilityService.instance
+                    ?: return buildJsonObject { put("ok", false); put("error", "Serviço de acessibilidade não está ativo") }
+                service.recentEvents(sinceSeq, limit)
+            }
+            "ocr_screen" -> OcrEngine.recognizeScreen()
             "input_tap" -> {
                 val x = (params["x"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
                 val y = (params["y"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
