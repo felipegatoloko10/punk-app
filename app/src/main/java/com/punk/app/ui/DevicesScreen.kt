@@ -71,7 +71,9 @@ fun DevicesScreen(vm:ChatViewModel,onSettings:()->Unit) {
                 "microphone" to allowed(Manifest.permission.RECORD_AUDIO),
                 "camera" to allowed(Manifest.permission.CAMERA),
                 "location" to (allowed(Manifest.permission.ACCESS_FINE_LOCATION)||allowed(Manifest.permission.ACCESS_COARSE_LOCATION)),
-                "contacts" to allowed(Manifest.permission.READ_CONTACTS),
+                "contacts" to (allowed(Manifest.permission.READ_CONTACTS)&&allowed(Manifest.permission.WRITE_CONTACTS)),
+                "calendar" to (allowed(Manifest.permission.READ_CALENDAR)&&allowed(Manifest.permission.WRITE_CALENDAR)),
+                "dnd" to runCatching { context.getSystemService(android.app.NotificationManager::class.java).isNotificationPolicyAccessGranted }.getOrDefault(false),
                 "calls" to allowed(Manifest.permission.CALL_PHONE),
                 "sms" to (allowed(Manifest.permission.SEND_SMS)&&allowed(Manifest.permission.READ_SMS)),
                 "files" to if(Build.VERSION.SDK_INT>=30)Environment.isExternalStorageManager() else allowed(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -137,7 +139,9 @@ fun DevicesScreen(vm:ChatViewModel,onSettings:()->Unit) {
                             if(Build.VERSION.SDK_INT>=33 && capabilities["postNotifications"]!=true)requestPermissions.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
                             else open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,context.packageName))
                         }
-                        CapabilityRow(PunkGlyph.Phone,"Contatos","Consultar sua agenda",capabilities["contacts"]==true) { requestPermissions.launch(arrayOf(Manifest.permission.READ_CONTACTS)) }
+                        CapabilityRow(PunkGlyph.Phone,"Contatos","Consultar e criar contatos",capabilities["contacts"]==true) { requestPermissions.launch(arrayOf(Manifest.permission.READ_CONTACTS,Manifest.permission.WRITE_CONTACTS)) }
+                        CapabilityRow(PunkGlyph.Activity,"Agenda","Consultar e criar eventos",capabilities["calendar"]==true) { requestPermissions.launch(arrayOf(Manifest.permission.READ_CALENDAR,Manifest.permission.WRITE_CALENDAR)) }
+                        CapabilityRow(PunkGlyph.Shield,"Não Perturbe","Controle especial do modo de interrupção",capabilities["dnd"]==true) { open(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)) }
                         CapabilityRow(PunkGlyph.Phone,"Ligações","Iniciar chamadas solicitadas",capabilities["calls"]==true) { requestPermissions.launch(arrayOf(Manifest.permission.CALL_PHONE)) }
                         CapabilityRow(PunkGlyph.Chat,"SMS","Consultar e enviar mensagens",capabilities["sms"]==true) { requestPermissions.launch(arrayOf(Manifest.permission.READ_SMS,Manifest.permission.SEND_SMS)) }
                         CapabilityRow(PunkGlyph.Link,"Arquivos","Acesso aos arquivos compartilhados",capabilities["files"]==true) {

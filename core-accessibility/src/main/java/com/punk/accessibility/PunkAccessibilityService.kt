@@ -295,6 +295,60 @@ class PunkAccessibilityService : AccessibilityService() {
         return awaitGesture(gesture, durationMs.coerceIn(50L, 2000L) + 2000L)
     }
 
+    suspend fun performLongPress(x: Int, y: Int, durationMs: Long = 800L): Boolean {
+        val metrics = resources.displayMetrics
+        if (x !in 0 until metrics.widthPixels || y !in 0 until metrics.heightPixels) return false
+        val duration = durationMs.coerceIn(400L, 5_000L)
+        val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
+            .build()
+        return awaitGesture(gesture, duration + 2_000L)
+    }
+
+    suspend fun performPath(points: List<Pair<Int, Int>>, durationMs: Long = 600L): Boolean {
+        if (points.size !in 2..32) return false
+        val metrics = resources.displayMetrics
+        if (points.any { (x, y) -> x !in 0 until metrics.widthPixels || y !in 0 until metrics.heightPixels }) return false
+        val duration = durationMs.coerceIn(100L, 5_000L)
+        val path = Path().apply {
+            moveTo(points.first().first.toFloat(), points.first().second.toFloat())
+            points.drop(1).forEach { (x, y) -> lineTo(x.toFloat(), y.toFloat()) }
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
+            .build()
+        return awaitGesture(gesture, duration + 2_000L)
+    }
+
+    suspend fun performPinch(centerX: Int, centerY: Int, startSpan: Int, endSpan: Int, durationMs: Long = 500L): Boolean {
+        if (startSpan !in 20..2_000 || endSpan !in 20..2_000) return false
+        val metrics = resources.displayMetrics
+        val startHalf = startSpan / 2
+        val endHalf = endSpan / 2
+        val points = listOf(
+            centerX - startHalf to centerY,
+            centerX + startHalf to centerY,
+            centerX - endHalf to centerY,
+            centerX + endHalf to centerY
+        )
+        if (points.any { (x, y) -> x !in 0 until metrics.widthPixels || y !in 0 until metrics.heightPixels }) return false
+        val duration = durationMs.coerceIn(100L, 3_000L)
+        val left = Path().apply {
+            moveTo((centerX - startHalf).toFloat(), centerY.toFloat())
+            lineTo((centerX - endHalf).toFloat(), centerY.toFloat())
+        }
+        val right = Path().apply {
+            moveTo((centerX + startHalf).toFloat(), centerY.toFloat())
+            lineTo((centerX + endHalf).toFloat(), centerY.toFloat())
+        }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(left, 0, duration))
+            .addStroke(GestureDescription.StrokeDescription(right, 0, duration))
+            .build()
+        return awaitGesture(gesture, duration + 2_000L)
+    }
+
     private suspend fun awaitGesture(gesture: GestureDescription, timeoutMs: Long): Boolean =
         withContext(Dispatchers.Main.immediate) {
             withTimeoutOrNull(timeoutMs) {

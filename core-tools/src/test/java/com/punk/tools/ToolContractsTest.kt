@@ -29,11 +29,14 @@ class ToolContractsTest {
         assertNull(ToolContracts.validate("set_wifi",args("{\"enabled\":false}")))
     }
     @Test fun catalogContainsEveryToolAndRejectsUnknownArguments() {
-        assertEquals(50,ToolContracts.schemas.size)
+        assertEquals(84,ToolContracts.schemas.size)
         assertTrue(ToolContracts.schemas.values.all { it["type"]?.jsonPrimitive?.content == "object" })
         assertNotNull(ToolContracts.validate("device_status",args("{\"command\":\"reboot\"}")))
         assertNull(ToolContracts.validate("find_and_click",args("{\"query\":\"Enviar\",\"scrolls\":2}")))
         assertNotNull(ToolContracts.validate("notification_reply",args("{\"key\":\"n1\"}")))
+        assertNull(ToolContracts.validate("set_brightness",args("{\"level\":180}")))
+        assertNotNull(ToolContracts.validate("file_move",args("{\"source\":\"relative\",\"destination\":\"/sdcard/x\"}")))
+        assertNotNull(ToolContracts.validate("grant_permission",args("{\"package\":\"com.example.app\",\"permission\":\"bad permission\"}")))
     }
     @Test fun otpAndFinancialNotificationsNeverLeaveRawCodes() {
         assertEquals("[Conteúdo protegido]",NotificationPrivacy.protect("Seu código é 124578"))

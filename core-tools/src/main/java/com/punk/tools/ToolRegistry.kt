@@ -40,12 +40,27 @@ object ToolRegistry {
         ToolDef("whatsapp_send","Envia mensagem de WhatsApp nativamente no aparelho","reversible_write","{}"),
         ToolDef("open_uber","Abre o Uber com destino pré-selecionado","reversible_write","{}"),
         ToolDef("unlock_device","Acorda a tela, desliza e digita o PIN para desbloquear","reversible_write","{}"),
+        ToolDef("unlock_pin_store","Guarda o PIN cifrado pelo Android Keystore","destructive","{}"),
+        ToolDef("unlock_pin_clear","Apaga o PIN guardado e sua chave criptográfica","destructive","{}"),
+        ToolDef("device_wake","Acorda a tela do aparelho","reversible_write","{}"),
+        ToolDef("device_lock","Bloqueia a tela do aparelho","reversible_write","{}"),
         ToolDef("install_apk_silent","Instala ou atualiza APK silenciosamente via Shizuku/ADB","destructive","{}"),
         ToolDef("set_wifi","Liga ou desliga o Wi-Fi via ADB","reversible_write","{}"),
         ToolDef("set_mobile_data","Liga ou desliga os dados móveis via ADB","reversible_write","{}"),
+        ToolDef("system_state","Lê estados de conectividade, energia, brilho e rotação","reading","{}"),
+        ToolDef("set_bluetooth","Liga ou desliga Bluetooth via Shizuku","reversible_write","{}"),
+        ToolDef("set_airplane_mode","Liga ou desliga modo avião via Shizuku","reversible_write","{}"),
+        ToolDef("set_brightness","Ajusta o brilho do sistema via Shizuku","reversible_write","{}"),
+        ToolDef("set_rotation","Controla rotação automática ou orientação fixa","reversible_write","{}"),
+        ToolDef("set_dnd","Ajusta o modo Não Perturbe via Shizuku","reversible_write","{}"),
+        ToolDef("set_battery_saver","Liga ou desliga economia de bateria","reversible_write","{}"),
         ToolDef("send_sms","Envia SMS diretamente","reversible_write","{}"),
         ToolDef("read_sms","Lê as últimas mensagens SMS recebidas","reading","{}"),
         ToolDef("list_contacts","Lê lista de contatos do telefone","reading","{}"),
+        ToolDef("contact_create","Cria um contato na agenda do aparelho","destructive","{}"),
+        ToolDef("calendar_list","Lista eventos da agenda em um intervalo","reading","{}"),
+        ToolDef("calendar_create","Cria um evento em uma agenda gravável","destructive","{}"),
+        ToolDef("set_alarm","Cria um alarme pelo aplicativo de relógio","reversible_write","{}"),
         ToolDef("list_calls","Lê histórico de chamadas recentes","reading","{}"),
         ToolDef("list_notifications","Lê notificações recentes recebidas de apps","reading","{}"),
         ToolDef("notification_reply","Responde uma notificação pela ação inline do app","reversible_write","{}"),
@@ -54,7 +69,15 @@ object ToolRegistry {
         ToolDef("dial_phone","Abre discador para número de telefone","reversible_write","{}"),
         ToolDef("open_app","Abre aplicativo pelo pacote","reversible_write","{}"),
         ToolDef("force_stop","Força encerramento de um app (via Shizuku/ADB)","destructive","{}"),
+        ToolDef("app_info","Lê detalhes e permissões de um pacote","reading","{}"),
+        ToolDef("uninstall_app","Desinstala um pacote para o usuário ou sistema","destructive","{}"),
+        ToolDef("clear_app_cache","Limpa somente o cache de um aplicativo","destructive","{}"),
+        ToolDef("clear_app_data","Apaga dados, contas e sessões de um aplicativo","destructive","{}"),
+        ToolDef("grant_permission","Concede uma permissão runtime a um pacote","destructive","{}"),
+        ToolDef("revoke_permission","Revoga uma permissão runtime de um pacote","destructive","{}"),
         ToolDef("open_url","Abre endereço no navegador","reversible_write","{}"),
+        ToolDef("open_map_route","Abre mapa ou navegação para um destino","reversible_write","{}"),
+        ToolDef("share_text","Abre a folha segura de compartilhamento com texto","reversible_write","{}"),
         ToolDef("set_volume","Ajusta volume do sistema","reversible_write","{}"),
         ToolDef("get_volume","Lê volume do sistema","reading","{}"),
         ToolDef("clipboard_set","Copia texto para a área de transferência","reversible_write","{}"),
@@ -67,6 +90,10 @@ object ToolRegistry {
         ToolDef("ocr_screen","Reconhece localmente o texto visível na tela","reading","{}"),
         ToolDef("input_tap","Toque em coordenada x,y","reversible_write","{}"),
         ToolDef("input_swipe","Gesto de arrasto entre coordenadas","reversible_write","{}"),
+        ToolDef("long_press","Mantém um toque pressionado em uma coordenada","reversible_write","{}"),
+        ToolDef("drag_drop","Arrasta um elemento entre duas coordenadas","reversible_write","{}"),
+        ToolDef("pinch","Executa pinça ou zoom com dois dedos","reversible_write","{}"),
+        ToolDef("gesture_path","Executa gesto por uma sequência de pontos","reversible_write","{}"),
         ToolDef("input_text","Digita texto no campo ativo na tela","reversible_write","{}"),
         ToolDef("click_node","Clica em elemento na tela por texto ou ID","reversible_write","{}"),
         ToolDef("scroll","Rola a tela para cima ou para baixo","reversible_write","{}"),
@@ -78,7 +105,14 @@ object ToolRegistry {
         ToolDef("dumpsys","Lê dumpsys de serviço","reading","{}"),
         ToolDef("send_notification","Publica uma notificação na barra do sistema","reversible_write","{}"),
         ToolDef("get_location","Obtém localização GPS em tempo real com endereço completo","reading","{}"),
-        ToolDef("camera_capture","Captura foto da câmera frontal ou traseira em Base64","reading","{}")
+        ToolDef("camera_capture","Captura foto da câmera frontal ou traseira em Base64","reading","{}"),
+        ToolDef("file_list","Lista arquivos do armazenamento compartilhado","reading","{}"),
+        ToolDef("file_search","Busca arquivos por nome no armazenamento compartilhado","reading","{}"),
+        ToolDef("file_read","Lê trecho limitado de um arquivo de texto","reading","{}"),
+        ToolDef("file_mkdir","Cria diretório no armazenamento compartilhado","reversible_write","{}"),
+        ToolDef("file_copy","Copia um arquivo no armazenamento compartilhado","reversible_write","{}"),
+        ToolDef("file_move","Move um arquivo no armazenamento compartilhado","destructive","{}"),
+        ToolDef("file_trash","Move arquivo ou diretório para uma lixeira recuperável","destructive","{}")
     ).map { it.copy(schema = ToolContracts.schemas.getValue(it.name).toString()) }
 
     fun isSuccessful(result: JsonObject): Boolean =
@@ -97,7 +131,9 @@ object ToolRegistry {
     private val sensitiveTools = setOf("audio_record", "camera_capture", "screen_capture_b64", "screen_dump", "find_element",
         "find_and_click", "accessibility_events", "ocr_screen", "screencap", "clipboard_get", "read_sms", "list_contacts",
         "list_calls", "list_notifications", "notification_reply", "notification_dismiss", "notification_open", "get_location",
-        "unlock_device", "shell_exec")
+        "unlock_device", "unlock_pin_store", "unlock_pin_clear", "contact_create", "calendar_list", "calendar_create",
+        "file_list", "file_search", "file_read", "file_copy", "file_move", "file_trash", "app_info", "uninstall_app",
+        "clear_app_cache", "clear_app_data", "grant_permission", "revoke_permission", "shell_exec")
 
     fun capabilities(ctx: Context): JsonObject {
         val shizuku = AxShell.isShizukuAvailable()
@@ -108,6 +144,8 @@ object ToolRegistry {
         val notificationsGranted = Build.VERSION.SDK_INT < 33 || ToolRuntime.hasPermission(ctx,android.Manifest.permission.POST_NOTIFICATIONS)
         val permissions = mapOf("microphone" to android.Manifest.permission.RECORD_AUDIO, "camera" to android.Manifest.permission.CAMERA,
             "location" to android.Manifest.permission.ACCESS_COARSE_LOCATION, "contacts" to android.Manifest.permission.READ_CONTACTS,
+            "contactsWrite" to android.Manifest.permission.WRITE_CONTACTS, "calendarRead" to android.Manifest.permission.READ_CALENDAR,
+            "calendarWrite" to android.Manifest.permission.WRITE_CALENDAR,
             "smsRead" to android.Manifest.permission.READ_SMS, "smsSend" to android.Manifest.permission.SEND_SMS,
             "callLog" to android.Manifest.permission.READ_CALL_LOG, "phoneCall" to android.Manifest.permission.CALL_PHONE)
         fun permission(name: String) = ToolRuntime.hasPermission(ctx, permissions.getValue(name))
@@ -118,6 +156,8 @@ object ToolRegistry {
             put("notificationListener", PunkNotificationListener.isEnabled())
             put("postNotifications",notificationsGranted)
             put("notificationForwarding", NotificationPrivacy.isForwardingEnabled(ctx))
+            put("storedUnlockPin", UnlockPinVault.hasStoredPin(ctx))
+            put("allFiles", Build.VERSION.SDK_INT < 30 || android.os.Environment.isExternalStorageManager())
             put("permissions", buildJsonObject { permissions.forEach { (name, value) -> put(name, ToolRuntime.hasPermission(ctx, value)) } })
             put("tools", buildJsonArray { tools.forEach { tool ->
                 val reason = when(tool.name) {
@@ -128,13 +168,17 @@ object ToolRegistry {
                     "flashlight" -> if (permission("camera")) null else "Permissão de câmera pendente"
                     "get_location" -> if (permission("location")) null else "Permissão de localização pendente"
                     "list_contacts" -> if (permission("contacts")) null else "Permissão de contatos pendente"
+                    "contact_create" -> if (permission("contactsWrite")) null else "Permissão para editar contatos pendente"
+                    "calendar_list" -> if (permission("calendarRead")) null else "Permissão para ler agenda pendente"
+                    "calendar_create" -> if (permission("calendarWrite")) null else "Permissão para editar agenda pendente"
                     "read_sms" -> if (permission("smsRead")) null else "Permissão de SMS pendente"
                     "send_sms" -> if (permission("smsSend")) null else "Permissão para enviar SMS pendente"
                     "list_calls" -> if (permission("callLog")) null else "Permissão de chamadas pendente"
                     "list_notifications", "notification_reply", "notification_dismiss", "notification_open" -> if (PunkNotificationListener.isEnabled()) null else "Ative acesso a notificações"
                     "screen_dump", "input_tap", "input_swipe", "input_text", "global_action" -> if (accessibility || shizuku) null else "Ative acessibilidade ou Shizuku"
-                    "find_element", "find_and_click", "accessibility_events", "click_node", "scroll" -> if (accessibility) null else "Ative acessibilidade"
-                    "screen_capture_b64", "ocr_screen", "screencap", "key_event", "force_stop", "install_apk_silent", "set_wifi", "set_mobile_data", "unlock_device", "dumpsys", "pm_list" -> if (shizuku) null else "Ative e autorize Shizuku"
+                    "find_element", "find_and_click", "accessibility_events", "click_node", "scroll", "long_press", "drag_drop", "pinch", "gesture_path" -> if (accessibility) null else "Ative acessibilidade"
+                    "screen_capture_b64", "ocr_screen", "screencap", "key_event", "force_stop", "install_apk_silent", "set_wifi", "set_mobile_data", "system_state", "set_bluetooth", "set_airplane_mode", "set_brightness", "set_rotation", "set_dnd", "set_battery_saver", "app_info", "uninstall_app", "clear_app_cache", "clear_app_data", "grant_permission", "revoke_permission", "device_wake", "device_lock", "unlock_device", "dumpsys", "pm_list" -> if (shizuku) null else "Ative e autorize Shizuku"
+                    "file_list", "file_search", "file_read", "file_mkdir", "file_copy", "file_move", "file_trash" -> if (Build.VERSION.SDK_INT < 30 || android.os.Environment.isExternalStorageManager()) null else "Conceda acesso a todos os arquivos"
                     "clipboard_get", "clipboard_set" -> if (visible) null else "Abra a sessão do PUNK"
                     else -> null
                 }
@@ -277,17 +321,31 @@ object ToolRegistry {
                 }
             }
             "unlock_device" -> {
-                val pin = (params["pin"] as? JsonPrimitive)?.content
+                val explicitPin = (params["pin"] as? JsonPrimitive)?.content
+                val pin = explicitPin ?: UnlockPinVault.load(ctx)
                 val res = AppAutomation.unlockDevice(ctx, pin)
                 buildJsonObject {
                     put("ok", res["ok"] as? Boolean ?: false)
                     put("unlocked", res["unlocked"] as? Boolean ?: false)
+                    put("usedStoredPin", explicitPin == null && pin != null)
                     if (res["error"] != null) put("error", res["error"] as String)
                 }
             }
+            "unlock_pin_store" -> runCatching {
+                UnlockPinVault.store(ctx, params.getValue("pin").jsonPrimitive.content)
+                buildJsonObject { put("ok", true); put("stored", true); put("storage", "android_keystore") }
+            }.getOrElse { buildJsonObject { put("ok", false); put("error", it.message ?: "Não foi possível guardar o PIN") } }
+            "unlock_pin_clear" -> runCatching {
+                UnlockPinVault.clear(ctx)
+                buildJsonObject { put("ok", true); put("stored", false) }
+            }.getOrElse { buildJsonObject { put("ok", false); put("error", it.message ?: "Não foi possível apagar o PIN") } }
+            "device_wake" -> PrivilegedTools.wake()
+            "device_lock" -> PrivilegedTools.lock()
             "install_apk_silent" -> {
                 val path = (params["path"] as? JsonPrimitive)?.content ?: "/sdcard/download/app.apk"
-                val r = AxShell.exec("pm install -r ${AxShell.quote(path)}", requirePrivilege = true)
+                val tempPath = "/data/local/tmp/punk_install_${System.nanoTime()}.apk"
+                val command = "cp ${AxShell.quote(path)} ${AxShell.quote(tempPath)} && chmod 644 ${AxShell.quote(tempPath)} && pm install -r ${AxShell.quote(tempPath)}; rc=\$?; rm -f ${AxShell.quote(tempPath)}; exit \$rc"
+                val r = AxShell.exec(command, timeoutMs = 120_000, requirePrivilege = true)
                 buildJsonObject {
                     put("ok", r.isSuccess)
                     put("stdout", r.stdout)
@@ -297,26 +355,19 @@ object ToolRegistry {
             }
             "set_wifi" -> {
                 val enabled = (params["enabled"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: true
-                val r = AxShell.exec("svc wifi " + (if (enabled) "enable" else "disable"), requirePrivilege = true)
-                buildJsonObject {
-                    put("ok", r.isSuccess)
-                    put("requestedEnabled", enabled)
-                    put("verified", false)
-                    put("status", if(r.isSuccess) "command_accepted" else "failed")
-                    if(!r.isSuccess) put("error",r.stderr.ifBlank { "Não foi possível alterar Wi-Fi" })
-                }
+                PrivilegedTools.setWifi(enabled)
             }
             "set_mobile_data" -> {
                 val enabled = (params["enabled"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: true
-                val r = AxShell.exec("svc data " + (if (enabled) "enable" else "disable"), requirePrivilege = true)
-                buildJsonObject {
-                    put("ok", r.isSuccess)
-                    put("requestedEnabled", enabled)
-                    put("verified", false)
-                    put("status", if(r.isSuccess) "command_accepted" else "failed")
-                    if(!r.isSuccess) put("error",r.stderr.ifBlank { "Não foi possível alterar dados móveis" })
-                }
+                PrivilegedTools.setMobileData(enabled)
             }
+            "system_state" -> PrivilegedTools.state()
+            "set_bluetooth" -> PrivilegedTools.setBluetooth(params.getValue("enabled").jsonPrimitive.boolean)
+            "set_airplane_mode" -> PrivilegedTools.setAirplane(params.getValue("enabled").jsonPrimitive.boolean)
+            "set_brightness" -> PrivilegedTools.setBrightness(params.getValue("level").jsonPrimitive.int)
+            "set_rotation" -> PrivilegedTools.setRotation(params.getValue("auto").jsonPrimitive.boolean, params["rotation"]?.jsonPrimitive?.intOrNull ?: 0)
+            "set_dnd" -> PrivilegedTools.setDnd(params.getValue("mode").jsonPrimitive.content)
+            "set_battery_saver" -> PrivilegedTools.setBatterySaver(params.getValue("enabled").jsonPrimitive.boolean)
             "flashlight", "torch" -> {
                 val state = (params["enabled"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
                     ?: (params["on"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
@@ -491,6 +542,34 @@ object ToolRegistry {
                     buildJsonObject { put("ok", false); put("error", e.message ?: "Erro ao ler contatos") }
                 }
             }
+            "contact_create" -> PersonalDataTools.createContact(
+                ctx,
+                params.getValue("name").jsonPrimitive.content,
+                params["phone"]?.jsonPrimitive?.content,
+                params["email"]?.jsonPrimitive?.content
+            )
+            "calendar_list" -> PersonalDataTools.listCalendarEvents(
+                ctx,
+                params.getValue("fromEpochSec").jsonPrimitive.long,
+                params.getValue("toEpochSec").jsonPrimitive.long,
+                params["limit"]?.jsonPrimitive?.intOrNull ?: 30
+            )
+            "calendar_create" -> PersonalDataTools.createCalendarEvent(
+                ctx,
+                params.getValue("title").jsonPrimitive.content,
+                params.getValue("startEpochSec").jsonPrimitive.long,
+                params.getValue("endEpochSec").jsonPrimitive.long,
+                params["location"]?.jsonPrimitive?.content,
+                params["description"]?.jsonPrimitive?.content,
+                params["calendarId"]?.jsonPrimitive?.longOrNull
+            )
+            "set_alarm" -> PersonalDataTools.setAlarm(
+                ctx,
+                params.getValue("hour").jsonPrimitive.int,
+                params.getValue("minute").jsonPrimitive.int,
+                params["message"]?.jsonPrimitive?.content.orEmpty(),
+                params["skipUi"]?.jsonPrimitive?.booleanOrNull ?: false
+            )
             "list_calls" -> {
                 val limit = (params["limit"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 10
                 try {
@@ -656,6 +735,24 @@ object ToolRegistry {
                     put("source", res.source)
                 }
             }
+            "app_info" -> PrivilegedTools.appInfo(params.getValue("package").jsonPrimitive.content)
+            "uninstall_app" -> PrivilegedTools.uninstall(
+                params.getValue("package").jsonPrimitive.content,
+                params["keepData"]?.jsonPrimitive?.booleanOrNull ?: false,
+                params["userOnly"]?.jsonPrimitive?.booleanOrNull ?: true
+            )
+            "clear_app_cache" -> PrivilegedTools.clearCache(params.getValue("package").jsonPrimitive.content)
+            "clear_app_data" -> PrivilegedTools.clearData(params.getValue("package").jsonPrimitive.content)
+            "grant_permission" -> PrivilegedTools.permission(
+                params.getValue("package").jsonPrimitive.content,
+                params.getValue("permission").jsonPrimitive.content,
+                true
+            )
+            "revoke_permission" -> PrivilegedTools.permission(
+                params.getValue("package").jsonPrimitive.content,
+                params.getValue("permission").jsonPrimitive.content,
+                false
+            )
             "open_url" -> {
                 val url = (params["url"] as? JsonPrimitive)?.content ?: ""
                 try {
@@ -669,6 +766,16 @@ object ToolRegistry {
                     buildJsonObject { put("ok", false); put("error", e.message ?: "Erro ao abrir URL") }
                 }
             }
+            "open_map_route" -> IntentTools.openMap(
+                ctx,
+                params.getValue("query").jsonPrimitive.content,
+                params["navigation"]?.jsonPrimitive?.booleanOrNull ?: false
+            )
+            "share_text" -> IntentTools.shareText(
+                ctx,
+                params.getValue("text").jsonPrimitive.content,
+                params["title"]?.jsonPrimitive?.content
+            )
             "set_volume" -> {
                 val streamName = (params["stream"] as? JsonPrimitive)?.content ?: "media"
                 val level = (params["level"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 50
@@ -833,6 +940,47 @@ object ToolRegistry {
                     buildJsonObject { put("ok", r.isSuccess); put("method", r.source) }
                 }
             }
+            "long_press" -> {
+                val x = params.getValue("x").jsonPrimitive.int
+                val y = params.getValue("y").jsonPrimitive.int
+                val duration = params["durationMs"]?.jsonPrimitive?.longOrNull ?: 800L
+                val ok = PunkAccessibilityService.instance?.performLongPress(x, y, duration) ?: false
+                buildJsonObject { put("ok", ok); put("x", x); put("y", y); put("durationMs", duration) }
+            }
+            "drag_drop" -> {
+                val points = listOf(
+                    params.getValue("x1").jsonPrimitive.int to params.getValue("y1").jsonPrimitive.int,
+                    params.getValue("x2").jsonPrimitive.int to params.getValue("y2").jsonPrimitive.int
+                )
+                val duration = params["durationMs"]?.jsonPrimitive?.longOrNull ?: 1_000L
+                val ok = PunkAccessibilityService.instance?.performPath(points, duration) ?: false
+                buildJsonObject { put("ok", ok); put("durationMs", duration) }
+            }
+            "pinch" -> {
+                val duration = params["durationMs"]?.jsonPrimitive?.longOrNull ?: 500L
+                val ok = PunkAccessibilityService.instance?.performPinch(
+                    params.getValue("centerX").jsonPrimitive.int,
+                    params.getValue("centerY").jsonPrimitive.int,
+                    params.getValue("startSpan").jsonPrimitive.int,
+                    params.getValue("endSpan").jsonPrimitive.int,
+                    duration
+                ) ?: false
+                buildJsonObject { put("ok", ok); put("durationMs", duration) }
+            }
+            "gesture_path" -> {
+                val rawPoints = params.getValue("points").jsonPrimitive.content.split(';').filter(String::isNotBlank)
+                val points = rawPoints.mapNotNull { raw ->
+                    val parts = raw.split(',').map(String::trim)
+                    if (parts.size == 2) parts[0].toIntOrNull()?.let { x -> parts[1].toIntOrNull()?.let { y -> x to y } } else null
+                }
+                if (points.size != rawPoints.size || points.size !in 2..32) {
+                    buildJsonObject { put("ok", false); put("error", "Use de 2 a 32 pontos no formato x,y;x,y") }
+                } else {
+                    val duration = params["durationMs"]?.jsonPrimitive?.longOrNull ?: 600L
+                    val ok = PunkAccessibilityService.instance?.performPath(points, duration) ?: false
+                    buildJsonObject { put("ok", ok); put("points", points.size); put("durationMs", duration) }
+                }
+            }
             "input_text" -> {
                 val text = (params["text"] as? JsonPrimitive)?.content ?: ""
                 val clear = (params["clearFirst"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false
@@ -979,6 +1127,31 @@ object ToolRegistry {
                     }
                 }
             }
+            "file_list" -> FileTools.list(ctx, params.getValue("path").jsonPrimitive.content, params["limit"]?.jsonPrimitive?.intOrNull ?: 100)
+            "file_search" -> FileTools.search(
+                ctx,
+                params.getValue("path").jsonPrimitive.content,
+                params.getValue("query").jsonPrimitive.content,
+                params["maxDepth"]?.jsonPrimitive?.intOrNull ?: 3,
+                params["limit"]?.jsonPrimitive?.intOrNull ?: 50
+            )
+            "file_read" -> FileTools.read(ctx, params.getValue("path").jsonPrimitive.content, params["maxBytes"]?.jsonPrimitive?.intOrNull ?: 65_536)
+            "file_mkdir" -> FileTools.mkdir(ctx, params.getValue("path").jsonPrimitive.content)
+            "file_copy" -> FileTools.copy(
+                ctx,
+                params.getValue("source").jsonPrimitive.content,
+                params.getValue("destination").jsonPrimitive.content,
+                move = false,
+                overwrite = params["overwrite"]?.jsonPrimitive?.booleanOrNull ?: false
+            )
+            "file_move" -> FileTools.copy(
+                ctx,
+                params.getValue("source").jsonPrimitive.content,
+                params.getValue("destination").jsonPrimitive.content,
+                move = true,
+                overwrite = params["overwrite"]?.jsonPrimitive?.booleanOrNull ?: false
+            )
+            "file_trash" -> FileTools.trash(ctx, params.getValue("path").jsonPrimitive.content)
             else -> buildJsonObject { put("error", "tool desconhecida: $tool") }
         }
         return result

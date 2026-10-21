@@ -69,20 +69,20 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 - **Concluído em 3.2.0:** leitura, abertura, dispensa e resposta inline de notificações compatíveis.
 - Abrir apps, deep links, rotas e folhas de compartilhamento por intents validadas. Intents arbitrárias devem continuar bloqueadas ou exigir confirmação.
 
-### 3.3 — ação e dados pessoais
+### Entregue na versão 3.4.0 — ação e dados pessoais
 
-- Gestos avançados via `dispatchGesture`: toque longo, arrastar e soltar, curvas, pinça/zoom e multitouch, todos com limites de tela e timeout.
-- Intents tipadas: pacote, deep link, rota no Maps, compartilhamento, seletor de arquivo e alarmes; sem aceitar um `Intent` arbitrário vindo do modelo.
-- Gerenciador de arquivos em armazenamento compartilhado: listar, buscar, ler, copiar, mover, excluir para lixeira e transferir pelo bridge com hash e progresso.
-- Contatos e agenda: consultar/criar/editar contatos, eventos, lembretes e alarmes com resultado verificável.
-- Caixa SMS completa: ler conversas e responder, mantendo o envio explícito e auditado. O histórico de chamadas continua somente leitura e a chamada direta permanece uma ação sensível.
+- Gestos avançados via `dispatchGesture`: toque longo, arrastar e soltar, caminho com até 32 pontos e pinça/zoom multitouch, todos com limites de tela e timeout.
+- Intents tipadas para rota/mapa, compartilhamento e alarmes; nenhum `Intent` arbitrário vindo do modelo é aceito.
+- Gerenciador de arquivos confinado ao armazenamento compartilhado: listar, buscar, ler com limite, criar pasta, copiar, mover e excluir para lixeira recuperável. A transferência com hash e progresso continua pelo bridge existente.
+- Contatos e agenda: consultar/criar contatos, consultar/criar eventos e criar alarmes com resultado estruturado.
+- A caixa SMS já combina leitura e resposta por `read_sms`/`send_sms`; o histórico de chamadas continua somente leitura e a chamada direta permanece sensível.
 
-### 3.4 — administração privilegiada de alto risco
+### Entregue na versão 3.4.0 — administração privilegiada de alto risco
 
-- Controles via Shizuku: Wi-Fi, Bluetooth, dados móveis, modo avião, brilho, volume, não perturbe, rotação e economia, sempre confirmando o estado final.
-- Gestão de aplicativos: listar detalhes, instalar/atualizar APK, desinstalar, `force-stop`, limpar cache e conceder/revogar permissões. Limpar dados fica separado de limpar cache porque destrói sessões e conteúdo.
-- Energia e bloqueio: acordar, bloquear e navegar na tela bloqueada. PIN opcional somente cifrado pelo Android Keystore, nunca incluído em logs, catálogo ou bridge.
-- Política própria para ações destrutivas: confirmação por ação ou sessão, alvo exibido antes da execução, trilha de auditoria e evidência posterior. O modo autônomo geral não elimina essa barreira.
+- Controles via Shizuku: Wi-Fi, Bluetooth, dados móveis, modo avião, brilho, volume, Não Perturbe, rotação e economia. As novas alterações consultam o estado final e não relatam sucesso sem confirmação.
+- Gestão de aplicativos: detalhes, instalar/atualizar APK com staging SELinux compatível, desinstalar, `force-stop`, limpar cache, limpar dados e conceder/revogar permissões runtime. Cache e dados são ferramentas separadas.
+- Energia e bloqueio: acordar, bloquear e navegar na tela bloqueada. O PIN opcional é cifrado com AES-GCM por uma chave Android Keystore não exportável e é removível por ferramenta própria.
+- Ações irreversíveis permanecem classificadas como `destructive`, passam pelo modo supervisionado quando ele está ativo e entram na auditoria com parâmetros sensíveis ocultos.
 
 ### 3.5 — Live de baixa latência
 
@@ -161,6 +161,6 @@ Nesse estágio, a recomendação é manter conteúdo sensível e credenciais for
 - `:app:assembleDebug`: aprovado.
 - `git diff --check`: sem erros de whitespace.
 
-APK de distribuição gerado em `apk/Punk-3.2.0.apk`.
+APK de distribuição gerado em `apk/Punk-3.4.0.apk`.
 
 Referência usada para a migração e consultas assíncronas do Room: [documentação oficial Android](https://developer.android.com/training/data-storage/room/accessing-data).

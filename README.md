@@ -1,14 +1,14 @@
-# Punk · 3.2.0
+# Punk · 3.4.0
 
 **Seu agente no computador e no Android, em uma única conversa.**
 
-[Baixar APK](apk/Punk-3.2.0.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.2.0-validation.json) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
+[Baixar APK](apk/Punk-3.4.0.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.4.0-validation.json) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
 
 Aplicativo Android nativo para conversar com o seu Punk e usar as ferramentas do Hermes no computador e no celular. Interface em português, com fundo grafite, destaque ciano e três áreas: **Conversa**, **Dispositivos** e **Atividade**.
 
 ## Instalar no celular
 
-O APK está em [`apk/Punk-3.2.0.apk`](apk/Punk-3.2.0.apk), versão 3.2.0, código 27, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura do APK 3.0.0, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
+O APK está em [`apk/Punk-3.4.0.apk`](apk/Punk-3.4.0.apk), versão 3.4.0, código 28, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
 
 1. Copie o APK para o S23 Ultra e instale.
 2. No PC, execute `bridge/INICIAR-PUNK.ps1` para iniciar o novo bridge.
@@ -37,7 +37,14 @@ Em uma instalação nova no computador, siga primeiro a [provisão do bridge](br
 - Buffer sequencial de eventos de acessibilidade para detectar troca de janela, diálogos e mudanças de conteúdo sem capturar screenshots continuamente.
 - OCR local da tela com o modelo latino do ML Kit: retorna texto, blocos, linhas, elementos e coordenadas sem enviar a imagem a um serviço externo.
 - Notificações acionáveis: além de listar, o Hermes pode abrir, dispensar e responder inline quando o aplicativo de origem oferece `RemoteInput`.
-- Catálogo de 50 ferramentas Android com schemas, validação, callbacks de gestos, tratamento de falhas e cancelamento.
+- Gestos avançados por acessibilidade: toque longo, arrastar e soltar, caminho com até 32 pontos e pinça/zoom real com dois dedos.
+- Intents tipadas para mapas, navegação, compartilhamento e alarmes, sem aceitar intents arbitrárias produzidas pelo modelo.
+- Gerenciador de arquivos confinado ao armazenamento compartilhado: listar, buscar, ler com limite, criar pastas, copiar, mover e enviar para uma lixeira recuperável.
+- Contatos e agenda: criação de contatos, consulta/criação de eventos e alarmes, além das ferramentas existentes de SMS e chamadas.
+- Administração Shizuku com leitura do estado e confirmação posterior: Wi-Fi, dados móveis, Bluetooth, modo avião, brilho, rotação, Não Perturbe e economia de bateria.
+- Administração de aplicativos: detalhes, instalação corrigida por staging em `/data/local/tmp`, desinstalação, limpeza separada de cache/dados e concessão/revogação de permissões runtime.
+- Energia e bloqueio: acordar, bloquear e desbloquear. O PIN opcional é cifrado com AES-GCM por uma chave não exportável do Android Keystore e nunca aparece no resultado ou auditoria.
+- Catálogo de 84 ferramentas Android com schemas, validação, callbacks de gestos, tratamento de falhas e cancelamento.
 - Anexos originais com chunks, progresso, retomada e SHA-256; limite de 512 MB por arquivo e cinco anexos por pedido. Recebimento de arquivos do PC na conversa.
 - Credenciais Android protegidas pelo Keystore, autenticação separada no PC e auditoria com dados sensíveis removidos e cadeia de integridade.
 
@@ -51,7 +58,7 @@ O plugin `punk_control` aplica a política de execução independentemente do mo
 
 ## Limites e validação
 
-O controle é limitado às permissões concedidas pelo Android, acessibilidade e Shizuku sem root, e aos acessos da sessão Windows do Hermes. Telas protegidas, dados privados de outros aplicativos, janelas elevadas e operações em segundo plano podem ser restritos. Captura de câmera/microfone exige o Punk visível nesta versão. Resposta de notificação só funciona quando a própria notificação expõe uma ação de resposta direta.
+O controle é limitado às permissões concedidas pelo Android, acessibilidade e Shizuku sem root, e aos acessos da sessão Windows do Hermes. Telas protegidas, dados privados de outros aplicativos, janelas elevadas e operações em segundo plano podem ser restritos. Captura de câmera/microfone exige o Punk visível nesta versão. Resposta de notificação só funciona quando a própria notificação expõe uma ação de resposta direta. Operações de administração são marcadas individualmente como destrutivas no catálogo e permanecem na trilha de auditoria sanitizada.
 
 O modo Live usa os mecanismos STT/TTS instalados no Android e funciona por turnos; ainda não é full-duplex e não interrompe a fala do assistente por voz. Wake word permanente, overlay e modos avançados de câmera ficam para evolução posterior. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
 
@@ -86,4 +93,4 @@ python -m unittest discover -s tests -v
 | `core-security` | Auditoria e integridade |
 | `bridge` | Servidor Python e plugin de integração com o Hermes |
 
-O histórico Git mantém as versões anteriores. Os APKs antigos na pasta `apk/` são históricos; use **Punk-3.2.0.apk** para esta versão.
+O histórico Git mantém as versões anteriores. Os APKs antigos na pasta `apk/` são históricos; use **Punk-3.4.0.apk** para esta versão.
