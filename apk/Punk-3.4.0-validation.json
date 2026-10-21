@@ -13,7 +13,13 @@
   "nativeLibrariesCompressed": 12,
   "signatureSchemeV2": true,
   "signerCertificateSha256": "c315805a680bab539ccc49ee7ea148074f96617431278d07a0b638d96e438aaf",
-  "physicalDeviceTested": false,
+  "physicalDeviceTested": true,
+  "physicalDeviceVersionVerified": true,
+  "readOnlyToolsVerified": [
+    "system_state",
+    "app_info",
+    "file_list"
+  ],
   "shizukuVerified": true,
   "shizukuUid": 2000,
   "pcAdbEnumerated": false
