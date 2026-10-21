@@ -13,7 +13,7 @@ import kotlin.math.min
 
 class BridgeClient(
     private val context: Context,
-    private val config: BridgeConfig,
+    private var config: BridgeConfig,
     private val scope: CoroutineScope,
     private val onState: (BridgeState) -> Unit,
     private val onMessage: (BridgeMessage) -> Unit,
@@ -31,7 +31,7 @@ class BridgeClient(
     private val jobs = ConcurrentHashMap<String, Job>()
     private val results = ConcurrentHashMap<String, ToolResult>()
     private val calls = context.getSharedPreferences("punk_executed_calls_v3", Context.MODE_PRIVATE)
-    private val client = BridgeHttp.client(config).newBuilder().pingInterval(20, TimeUnit.SECONDS).readTimeout(0, TimeUnit.SECONDS).build()
+    private var client = BridgeHttp.client(config).newBuilder().pingInterval(20, TimeUnit.SECONDS).readTimeout(0, TimeUnit.SECONDS).build()
 
     fun connect() {
         if (closed) return
@@ -146,6 +146,18 @@ class BridgeClient(
         if (closed || reconnectJob?.isActive == true) return
         attempt++
         val backoff = min(config.reconnectMaxMs, config.reconnectBaseMs * (1L shl min(attempt, 10)))
-        reconnectJob = scope.launch { delay(backoff + (0..500).random()); if (!closed) connect() }
+        reconnectJob = scope.launch {
+            delay(backoff + (0..500).random())
+            if(config.accountComputerId.isNotEmpty()) {
+                val updated=runCatching { PunkAccount.connect(context,config.accountComputerId) }.getOrNull()
+                if(closed)return@launch
+                if(updated!=null && updated!=config) {
+                    client.connectionPool.evictAll();client.dispatcher.executorService.shutdown()
+                    config=updated
+                    client=BridgeHttp.client(config).newBuilder().pingInterval(20,TimeUnit.SECONDS).readTimeout(0,TimeUnit.SECONDS).build()
+                }
+            }
+            if (!closed) connect()
+        }
     }
 }

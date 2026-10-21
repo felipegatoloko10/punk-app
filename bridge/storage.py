@@ -1,5 +1,6 @@
 """Private durable state. Only credential digests, never bearer tokens, enter SQLite."""
 import hashlib
+import hmac
 import json
 import secrets
 import sqlite3
@@ -28,6 +29,7 @@ class Store:
         PRAGMA journal_mode=WAL;
         CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,name TEXT,token_hash TEXT UNIQUE,revoked INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS pairing(code_hash TEXT PRIMARY KEY,expires REAL,used INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS account_links(owner TEXT,installation TEXT,device TEXT UNIQUE,PRIMARY KEY(owner,installation));
         CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT,device TEXT,type TEXT,payload TEXT);
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT);
         CREATE TABLE IF NOT EXISTS sessions(device TEXT,conversation TEXT,hermes_id TEXT,PRIMARY KEY(device,conversation));
@@ -72,6 +74,29 @@ class Store:
     def authenticate(self, token):
         row = self.db.execute('SELECT id FROM devices WHERE token_hash=? AND revoked=0', (digest(token),)).fetchone()
         return row[0] if row else None
+
+    def account_pair(self, owner, installation, key, existing_device=None):
+        """Idempotent device identity. Revoked installations never silently re-enroll."""
+        with self.db:
+            row = self.db.execute('SELECT device FROM account_links WHERE owner=? AND installation=?',
+                                  (owner, installation)).fetchone()
+            adopt = existing_device and self.db.execute(
+                'SELECT id FROM devices WHERE id=? AND revoked=0 AND id NOT IN (SELECT device FROM account_links)',
+                (existing_device,)).fetchone()
+            device = row[0] if row else existing_device if adopt else uid()
+            token = hmac.new(bytes.fromhex(key), ('punk-account-v1:' + device).encode(), hashlib.sha256).hexdigest()
+            if row:
+                existing = self.db.execute('SELECT revoked,token_hash FROM devices WHERE id=?', (device,)).fetchone()
+                if not existing or existing['revoked'] or not hmac.compare_digest(existing['token_hash'], digest(token)):
+                    return None
+            else:
+                if adopt:
+                    self.db.execute('UPDATE devices SET token_hash=? WHERE id=?', (digest(token), device))
+                else:
+                    self.db.execute('INSERT INTO devices(id,name,token_hash) VALUES (?,?,?)',
+                                    (device, 'Conta Punk', digest(token)))
+                self.db.execute('INSERT INTO account_links VALUES (?,?,?)', (owner, installation, device))
+        return {'deviceId': device, 'token': token, 'protocolVersion': 3}
 
     def event(self, device, kind, payload):
         seq = self.execute('INSERT INTO events(device,type,payload) VALUES (?,?,?)', (device, kind, json.dumps(payload))).lastrowid

@@ -36,7 +36,9 @@ object BridgePrefs {
         }
         _config.value = load(ctx)
     }
-    fun load(ctx: Context) = BridgeConfig(host(ctx), port(ctx), token(ctx), tls(ctx), certificateFingerprint(ctx), deviceId(ctx))
+    fun load(ctx: Context) = BridgeConfig(host(ctx), port(ctx), token(ctx), tls(ctx), certificateFingerprint(ctx), deviceId(ctx),
+        trustMode=prefs(ctx).getString("trust_mode", "pinned") ?: "pinned",
+        accountComputerId=prefs(ctx).getString("account_computer", "") ?: "")
     fun host(ctx: Context): String = prefs(ctx).getString("host", "") ?: ""
     fun port(ctx: Context): Int = prefs(ctx).getInt("port", 8765)
     fun tls(ctx: Context): Boolean = prefs(ctx).getBoolean("tls", false)
@@ -76,7 +78,8 @@ object BridgePrefs {
         if (c.deviceId != deviceId(ctx)) prefs(ctx).edit().remove("last_seq").apply()
         saveToken(ctx, c.token)
         prefs(ctx).edit().putString("host", c.host.trim()).putInt("port", c.port).putBoolean("tls", c.useTls)
-            .putString("fingerprint", c.certificateFingerprint).putString("device_id", c.deviceId).putBoolean("migrated", true).apply()
+            .putString("fingerprint", c.certificateFingerprint).putString("device_id", c.deviceId).putBoolean("migrated", true)
+            .putString("trust_mode",c.trustMode).putString("account_computer",c.accountComputerId).apply()
         _config.value = c
     }
     fun saveFailoverSettings(ctx: Context, localHost: String, tailscaleHost: String, autoFailover: Boolean) {

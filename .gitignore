@@ -20,3 +20,12 @@ captures
 # Capturas locais antigas e artefatos de diagnóstico
 /screenshot_*.png
 /nul
+
+# Credenciais, certificados, banco local e executáveis baixados pelo Desktop
+/bridge/runtime/
+/cloud/node_modules/
+/cloud/dist/
+/cloud/*.zip
+/cloud/.env*
+/build-account.log
+/build-account-final.log

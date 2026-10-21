@@ -17,7 +17,10 @@ import javax.net.ssl.X509TrustManager
 object BridgeHttp {
     fun fingerprint(cert: X509Certificate): String = MessageDigest.getInstance("SHA-256").digest(cert.encoded).joinToString("") { "%02x".format(it) }
     fun client(config: BridgeConfig): OkHttpClient {
-        val builder = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS)
+        if (config.useTls) AccountRoutes.validateTls(config)
+        val builder = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+            .connectTimeout(10, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS)
+        if(config.trustMode=="cloudflare")builder.dns(CloudflareDns.resolver)
         if (config.useTls && config.certificateFingerprint.isNotBlank()) {
             val pin = config.certificateFingerprint.replace(":", "").lowercase()
             require(pin.matches(Regex("[a-f0-9]{64}"))) { "Identidade TLS inválida" }

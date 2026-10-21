@@ -4,7 +4,8 @@
 
 - **Implementado em 3.5.2:** painel local Windows, aberto com duplo clique em `ABRIR-PUNK.vbs`, com estado do PC/celular/Hermes/ADB e botões para conectar e gerar o QR. Usa a instalação Hermes já provisionada e mantém o bridge em execução ao fechar a janela.
 - **Implementado em 3.5.2:** Live por turnos com captura suspensa durante o TTS e intervalo de 900 ms após o término/interrupção. A interrupção é manual; o detector baseado apenas em volume foi retirado do fluxo ativo.
-- **Projeto abaixo, ainda não implementado:** servidor MCP, instalador autossuficiente, descoberta automática, credenciais individuais de clientes MCP e configuração visual desses clientes.
+- **Implementado em 3.6.0:** Conta Punk com Neon Auth, sessões cifradas, descoberta por proprietário, vínculo persistente e túnel Cloudflare gratuito opcional. Endereço externo renovado automaticamente sem domínio comprado. Veja [uso e limites](CONTA-PUNK.md).
+- **Projeto abaixo, ainda não implementado:** servidor MCP, instalador autossuficiente, descoberta mDNS, credenciais individuais de clientes MCP e configuração visual desses clientes. A descoberta pela Conta Punk já existe.
 
 ## Experiência desejada
 
@@ -55,13 +56,13 @@ Cada resultado preserva `ok`, `status`, `callId`, erro e origem. `timeout` signi
 - A leitura do QR troca esse pedido pela credencial individual do aparelho, guardada automaticamente.
 - O Desktop mantém credenciais de integrações no cofre do Windows e oferece revogação por cliente/aparelho.
 - Descoberta mDNS encontra o PC na rede local; QR continua sendo o caminho inicial e o fallback. A identidade criptográfica, e não o IP, identifica o computador.
-- Tailscale pode fornecer a rota remota quando já disponível; o MVP não depende de conta ou banco em nuvem.
+- Conta Punk usa Neon e Quick Tunnel para descoberta/acesso externo. QR e Tailscale manual continuam disponíveis sem conta; o aplicativo não administra a VPN.
 - Uma fila por dispositivo/conversa evita que dois agentes disputem toques, fala ou edição. Eventos recebidos são dados e nunca entram automaticamente como instruções do agente.
 
 ## Sequência recomendada
 
 1. **3.5.2 — estabilidade e primeiro painel:** correção de eco e painel para instalações já configuradas, entregues neste patch.
-2. **3.6 — instalação e conexão:** instalador com dependências próprias, assistente visual de provisão Hermes, descoberta de PC e reconexão; nenhum terminal no fluxo normal.
+2. **3.6.0 — conta e conexão:** login, descoberta pela conta, credenciais salvas e túnel gratuito implementados. **Ainda pendente em 3.6.x:** instalador com dependências próprias, inicialização Windows, provisão visual do Hermes, recuperação de senha e revogação visual.
 3. **3.7 — MCP:** catálogo, execução, acompanhamento/cancelamento, credencial por cliente e integração visual. Testar com dois clientes MCP e modelos diferentes.
 4. **3.8 — experiência e operação:** retomar o chat profissional e a linha do tempo de atividades, com diagnóstico de concorrência e latência entre agentes/dispositivos.
 

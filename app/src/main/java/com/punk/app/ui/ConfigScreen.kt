@@ -98,6 +98,7 @@ fun ConfigScreen(onConnect:(String,Int,String)->Unit,onBack:()->Unit={}) {
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).imePadding().padding(20.dp),verticalArrangement=Arrangement.spacedBy(20.dp)) {
             SectionHeading(stringResource(R.string.punk_connection_eyebrow),stringResource(R.string.punk_connection_title),stringResource(R.string.punk_connection_description))
+            AccountPanel(onConnect)
             PunkPanel {
                 Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     PunkIcon(PunkGlyph.Link,tint=PunkNeonCyan)

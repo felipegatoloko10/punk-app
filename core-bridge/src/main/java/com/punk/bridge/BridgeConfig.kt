@@ -11,7 +11,9 @@ data class BridgeConfig(
     val certificateFingerprint: String = "",
     val deviceId: String = "",
     val reconnectBaseMs: Long = 1000L,
-    val reconnectMaxMs: Long = 30000L
+    val reconnectMaxMs: Long = 30000L,
+    val trustMode: String = "pinned",
+    val accountComputerId: String = ""
 ) {
     fun wsUrl(): String {
         return "${if (useTls) "wss" else "ws"}://${host}:${port}/punk-bridge"

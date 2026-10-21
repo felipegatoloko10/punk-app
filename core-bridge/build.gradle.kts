@@ -26,6 +26,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
 implementation(libs.okhttp.logging)
 implementation("androidx.core:core-ktx:1.12.0")
 implementation("androidx.work:work-runtime-ktx:2.9.0")

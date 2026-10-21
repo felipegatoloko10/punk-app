@@ -18,6 +18,18 @@ object NetworkFailoverManager {
         manager = cm
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                val managed=BridgePrefs.load(ctx).accountComputerId
+                if(managed.isNotEmpty()) {
+                    job?.cancel()
+                    job=scope.launch(Dispatchers.IO) {
+                        delay(1500)
+                        val current=BridgePrefs.load(ctx)
+                        val config=runCatching { PunkAccount.connect(ctx,managed) }.getOrNull() ?: return@launch
+                        if(config!=current || BridgeService.state.value !is BridgeState.Connected)
+                            ctx.startForegroundService(Intent(ctx,BridgeService::class.java).setAction(BridgeService.ACTION_START))
+                    }
+                    return
+                }
                 if (!BridgePrefs.autoFailover(ctx)) return
                 job?.cancel()
                 job = scope.launch(Dispatchers.IO) {

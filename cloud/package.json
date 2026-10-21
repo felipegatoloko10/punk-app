@@ -1,0 +1,11 @@
+{
+  "name": "punk-account-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {"@neon/functions": "latest", "jose": "^6.0.0", "pg": "^8.0.0"},
+  "devDependencies": {"esbuild": "^0.25.0"}
+}

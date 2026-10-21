@@ -7,6 +7,9 @@ import ssl
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from account import AccountError
 
 from aiohttp import web
 import aiohttp
@@ -46,6 +49,23 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.client.get('/api/status')).status, 401)
         self.assertEqual((await self.internal.get('/api/status', headers=self.auth)).status, 401)
         self.assertEqual((await self.internal.get('/api/status', headers=self.internal_auth)).status, 200)
+
+    async def test_account_ticket_is_required_once_and_revocation_stays_effective(self):
+        self.assertEqual((await self.internal.get('/api/account')).status,401)
+        account=SimpleNamespace(tunnel=None,data={'cookies':'private','owner':'owner','device_key':'ab'*32},
+                                consume=AsyncMock(return_value='938a757e-4413-4e43-8e4e-624251435645'))
+        self.bridge.account=account
+        self.assertEqual((await self.client.post('/api/account/connect',json={'ticket':'bad'})).status,401)
+        first=await self.client.post('/api/account/connect',json={'ticket':'ab'*32},headers=self.auth)
+        self.assertEqual(first.status,200)
+        result=await first.json()
+        self.assertEqual(result['deviceId'],self.device)
+        self.assertEqual(self.store.authenticate(result['token']),self.device)
+        account.consume.side_effect=AccountError('used')
+        self.assertEqual((await self.client.post('/api/account/connect',json={'ticket':'ab'*32})).status,401)
+        account.consume.side_effect=None
+        self.store.execute('UPDATE devices SET revoked=1 WHERE id=?',(self.device,))
+        self.assertEqual((await self.client.post('/api/account/connect',json={'ticket':'cd'*32})).status,403)
 
     def test_adb_device_states_are_reported_without_identifiers(self):
         connected = parse_adb_devices('List of devices attached\nR58M123 device product:x model:Phone transport_id:1\n')

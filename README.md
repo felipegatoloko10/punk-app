@@ -1,14 +1,16 @@
-# Punk · 3.5.2
+# Punk · 3.6.0
 
 **Seu agente no computador e no Android, em uma única conversa.**
 
-[Baixar APK](apk/Punk-3.5.2.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.5.2-validation.json) · [Desktop e MCP](docs/PUNK-DESKTOP-MCP.md) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
+[Baixar APK](apk/Punk-3.6.0.apk) · [Conta e acesso externo](docs/CONTA-PUNK.md) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.6.0-validation.json) · [Desktop e MCP](docs/PUNK-DESKTOP-MCP.md) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
 
 Aplicativo Android nativo para conversar com o seu Punk e usar as ferramentas do Hermes no computador e no celular. Interface em português, com fundo grafite, destaque ciano e três áreas: **Conversa**, **Dispositivos** e **Atividade**.
 
 ## Instalar no celular
 
-O APK está em [`apk/Punk-3.5.2.apk`](apk/Punk-3.5.2.apk), versão 3.5.2, código 31, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
+O APK está em [`apk/Punk-3.6.0.apk`](apk/Punk-3.6.0.apk), versão 3.6.0, código 32, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
+
+Novo: **Conta Punk com e-mail e senha**, sessão salva no cofre do Windows/Android e descoberta do PC. No Desktop, crie a conta e toque **Ativar acesso externo gratuito**. No Android, entre na mesma conta e escolha o PC. Não é necessário comprar domínio nem copiar tokens. [Instruções e limites](docs/CONTA-PUNK.md).
 
 1. Copie o APK para o S23 Ultra e instale.
 2. No PC já configurado, abra **ABRIR-PUNK.vbs** com duplo clique: o painel Punk Desktop mostra a conexão e oferece **Conectar ao PC**.
@@ -16,12 +18,16 @@ O APK está em [`apk/Punk-3.5.2.apk`](apk/Punk-3.5.2.apk), versão 3.5.2, códig
 4. No app, abra **Configurações → Ler QR code**. Também é possível importar o `bridge/runtime/pairing.json` ou colar seu conteúdo.
 5. Em **Dispositivos**, ative os recursos desejados. Microfone, câmera, localização, contatos e SMS têm concessões próprias; acessibilidade e Shizuku são apresentados separadamente.
 
-As portas novas são **18765 (TLS)** e **18766 (API privada em loopback)**, preservando o bridge anterior nas portas 8765/8766 durante a transição. O canal do celular exige token por dispositivo e confere a identidade criptográfica do PC. O modo remoto usa seu Tailscale já conectado; o aplicativo não alterna a VPN automaticamente.
+As portas novas são **18765 (TLS)** e **18766 (API privada em loopback)**, preservando o bridge anterior nas portas 8765/8766 durante a transição. O canal do celular exige credencial por dispositivo. Na rede local, confere a identidade criptográfica do PC; no modo Conta Punk remoto, usa HTTPS/WebSocket pela Cloudflare com certificado público válido. O Tailscale manual continua como alternativa, sem alternar a VPN automaticamente.
 
 Em uma instalação nova no computador, siga primeiro a [provisão do bridge](bridge/README.md). O painel e os scripts pressupõem que essa configuração já existe; o repositório não inclui as credenciais nem a identidade pessoal do agente. O instalador autossuficiente e o servidor MCP estão planejados em [Desktop e MCP](docs/PUNK-DESKTOP-MCP.md), ainda não implementados.
 
 ## O que foi implementado
 
+- Conta gerenciada pelo Neon, cadastro/criação de conta no Desktop e Android, credenciais de sessão cifradas e renovação automática do JWT. Senhas não são persistidas.
+- Descoberta de computadores por proprietário, convites de conexão com 90 segundos e uso único, vínculo estável por instalação e respeito à revogação. A migração de um QR válido para conta conserva o ID do aparelho e o histórico do bridge.
+- Acesso externo opcional via Cloudflare Quick Tunnel, sem domínio comprado. Download oficial com SHA-256, processo supervisionado pelo bridge, verificação TLS da origem e atualização automática do endereço na conta.
+- Reconexão com descoberta atualizada e fallback de DNS-over-HTTPS somente para `*.trycloudflare.com` quando o DNS do sistema falha. Não muda DNS/VPN do aparelho nem desativa TLS.
 - Conversa com streaming, Markdown, código copiável, múltiplas conversas, histórico persistente, busca, exportação e repetição explícita de pedidos interrompidos.
 - Modo Live persistente em foreground: continua ativo ao fechar a folha ou apagar a tela, mantém notificação com controles e reabre a escuta após cada resposta.
 - Wake phrase opcional “Punk”/“Ei, Punk”, reconhecimento local quando disponível, fallback para o reconhecedor do sistema, transcrição parcial e indicação clara de escuta, processamento e fala.
@@ -66,7 +72,7 @@ O controle é limitado às permissões concedidas pelo Android, acessibilidade e
 
 O modo Live usa STT/TTS do Android e continua sendo conversação por turnos: a instalação atual do Hermes não expõe transporte Realtime de áudio. Durante a fala, use o botão para interromper; a interrupção automática por voz não está ativa nesta versão. A wake phrase é reconhecida por software durante a escuta Live, não durante o TTS nem por DSP de baixíssimo consumo. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
 
-Validação desta versão: **37 testes Android/JVM e 18 testes Python passaram**, release assinada e lint sem erros bloqueantes. A suíte cobre bloqueio de captura durante a fala, cauda de eco, espera pela resposta final, envio, política, cancelamento, replay e contratos das ferramentas. O teste assíncrono de eventos de voz foi movido para a suíte assíncrona para executar efetivamente suas verificações. Os testes do bridge usam TLS real e Hermes simulado. No S23 Ultra foram confirmados instalação 3.5.2/código 31 e reconexão do bridge, Hermes e ADB; o teste acústico de uma conversa falada ainda não foi confirmado. O painel Desktop passou por teste de inicialização e conexão com interface assíncrona; requer o PC previamente provisionado.
+Validação 3.6.0: **47 testes Android/JVM**, testes Python e testes da API de contas; consulte o [relatório da versão](apk/Punk-3.6.0-validation.json) para contagens e verificações. Login, restauração DPAPI, renovação, isolamento entre dois usuários e consumo único foram exercitados contra o Neon real. Um servidor isolado confirmou HTTPS e WebSocket autenticado pelo túnel gratuito, com TLS da origem verificado. Não foram usados a conta pessoal ou o Hermes real nesses testes de nuvem. O APK 3.6.0 ainda requer validação de login/rede no telefone físico; nenhum aparelho apareceu no ADB ao finalizar a compilação. O teste acústico Live também permanece pendente. O painel Desktop requer o PC previamente provisionado.
 
 O Shizuku foi verificado no aparelho em execução via ADB wireless, autorizado e operando como UID 2000 (`shell`). Isso não significa que o Windows tenha enumerado o telefone: o cartão **ADB com o PC** continua sendo um diagnóstico separado e pode permanecer desconectado sem impedir as ferramentas locais via Shizuku.
 

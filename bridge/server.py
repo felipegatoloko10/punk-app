@@ -20,8 +20,12 @@ from aiohttp import web
 
 try:
     from .storage import Store, uid
+    from .account import PcAccount, AccountError
+    from .tunnel import QuickTunnel
 except ImportError:
     from storage import Store, uid
+    from account import PcAccount, AccountError
+    from tunnel import QuickTunnel
 
 PHONE_WRAPPERS = ('jarvis_', 'punk_device_')
 # General shell, arbitrary code, browser navigation/evaluation and unknown tools
@@ -135,6 +139,15 @@ class Bridge:
         self.mode_lock = asyncio.Lock()
         self.conversation_locks = {}
         self.switching = False
+        self.account = None
+        self.account_task = None
+        self.account_route_key = None
+        self.last_account_publish = 0
+        if config.get('_runtimePath'):
+            try:
+                self.account = PcAccount(config['_runtimePath'])
+            except (AccountError, OSError, ValueError):
+                pass  # Existing local QR connections must not depend on cloud availability.
 
     @property
     def supervised(self):
@@ -143,6 +156,8 @@ class Bridge:
     async def startup(self, app):
         if self.http is None:
             self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=35))
+        if self.account and not self.account_task:
+            self.account_task = asyncio.create_task(self.account_loop())
         # Admitted durable runs are reconciled on bridge restart; never resubmit.
         for row in self.store.db.execute("SELECT * FROM requests WHERE status NOT IN ('completed','failed','cancelled','interrupted')").fetchall():
             if row['run_id']:
@@ -152,6 +167,11 @@ class Bridge:
                 self.store.execute("UPDATE requests SET status='interrupted' WHERE device=? AND id=?", (row['device'], row['id']))
 
     async def cleanup(self, app):
+        if self.account_task:
+            self.account_task.cancel()
+            await asyncio.gather(self.account_task, return_exceptions=True)
+        if self.account and self.account.tunnel:
+            await self.account.tunnel.stop()
         self.release_waiters()
         for task in list(self.run_tasks.values()):
             task.cancel()
@@ -173,13 +193,14 @@ class Bridge:
     def public_app(self):
         @web.middleware
         async def auth(request, handler):
-            if request.path != '/api/pair':
+            if request.path not in ('/api/pair', '/api/account/connect'):
                 request['device'] = self.store.authenticate(bearer(request))
                 if not request['device']:
                     raise web.HTTPUnauthorized()
             return await handler(request)
         app = web.Application(middlewares=[errors, auth], client_max_size=1100000)
         app.router.add_post('/api/pair', self.pair)
+        app.router.add_post('/api/account/connect', self.account_connect)
         app.router.add_get('/punk-bridge', self.websocket)
         app.router.add_get('/api/status', self.status)
         app.router.add_get('/api/conversations/{cid}/messages', self.history)
@@ -201,12 +222,116 @@ class Bridge:
         app = web.Application(middlewares=[errors, auth], client_max_size=1100000)
         app.router.add_get('/api/status', self.status)
         app.router.add_post('/api/tool', self.internal_tool)
+        app.router.add_get('/api/account', self.account_status)
+        app.router.add_post('/api/account/{action}', self.account_action)
         app.router.add_post('/api/chat', self.internal_chat)
         app.router.add_post('/api/policy/ready', self.policy_ready)
         app.router.add_post('/api/policy/check', self.policy_check)
         app.router.add_post('/api/files/publish', self.publish_file)
         app.router.add_get('/api/device-events', self.internal_device_events)
         return app
+
+    async def account_status(self, request):
+        return web.json_response(self.account.status() if self.account else {'configured': False, 'signedIn': False})
+
+    async def account_action(self, request):
+        account = self.account
+        if not account or not account.configured:
+            return web.json_response({'error': 'O serviço de contas ainda não foi ativado.'}, status=503)
+        try:
+            action = request.match_info['action']
+            if action in ('login', 'signup'):
+                data = await request.json()
+                email, password = str(data.get('email', '')).strip(), str(data.get('password', ''))
+                if not email or len(email) > 254 or not 1 <= len(password) <= 1024:
+                    raise web.HTTPBadRequest()
+                await account.login(self.http, email, password, signup=action == 'signup')
+                await self.account_register()
+            elif action == 'logout':
+                await account.logout(self.http)
+                if account.tunnel:
+                    await account.tunnel.stop()
+                    account.tunnel = None
+            elif action == 'remote':
+                await account.access(self.http)
+                enabled = (await request.json()).get('enabled') is True
+                account.data['remote_enabled'] = enabled
+                account.secret.save(account.data)
+                if not enabled and account.tunnel:
+                    await account.tunnel.stop()
+                    account.tunnel = None
+                    account.endpoint = ''
+                await self.account_register()
+            else:
+                raise web.HTTPNotFound()
+        except AccountError as error:
+            return web.json_response({'error': str(error)}, status=400)
+        return web.json_response(account.status())
+
+    async def account_register(self):
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes
+        cert = x509.load_pem_x509_certificate((Path(self.config['_runtimePath']) / 'certificate.pem').read_bytes())
+        await self.account.register(self.http, self.config, cert.fingerprint(hashes.SHA256()).hex())
+        self.account_route_key = (self.account.data.get('computer_id'), self.account.endpoint,
+                                  self.config.get('advertiseHost') or self.account.local_address())
+        self.last_account_publish = time.monotonic()
+
+    async def account_loop(self):
+        while True:
+            account = self.account
+            if account.data.get('cookies'):
+                try:
+                    if account.data.get('remote_enabled'):
+                        if account.tunnel and account.tunnel.process.returncode is not None:
+                            await account.tunnel.stop()
+                            account.tunnel = None
+                            account.endpoint = ''
+                        if not account.tunnel:
+                            account.tunnel = QuickTunnel(self.config['_runtimePath'], self.config['port'])
+                            try:
+                                account.endpoint = await account.tunnel.start()
+                                if not account.data.get('cookies') or not account.data.get('remote_enabled'):
+                                    await account.tunnel.stop()
+                                    account.tunnel = None
+                                    account.endpoint = ''
+                            except BaseException:
+                                account.tunnel = None
+                                raise
+                    route_key = (account.data.get('computer_id'), account.endpoint,
+                                 self.config.get('advertiseHost') or account.local_address())
+                    # Do not keep the free database awake with a constant heartbeat.
+                    # Mobile probes the real bridge; last_seen is discovery freshness, not online state.
+                    if route_key != self.account_route_key or time.monotonic() - self.last_account_publish > 1800:
+                        await self.account_register()
+                    account.error = ''
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    account.error = 'Não foi possível atualizar a conexão externa. Tentaremos novamente.'
+            await asyncio.sleep(30)
+
+    async def account_connect(self, request):
+        # Cloudflare proxies requests from loopback; use a bounded global window as well as per-IP pairing limits.
+        now = time.time()
+        attempts = [t for t in self.pair_attempts.get('account', []) if now - t < 60]
+        if len(attempts) >= 30:
+            raise web.HTTPTooManyRequests()
+        self.pair_attempts['account'] = attempts + [now]
+        if not self.account or not self.account.data.get('cookies'):
+            raise web.HTTPUnauthorized()
+        ticket = (await request.json()).get('ticket', '')
+        if not isinstance(ticket, str) or not re.fullmatch('[a-f0-9]{64}', ticket):
+            raise web.HTTPUnauthorized()
+        try:
+            installation = await self.account.consume(self.http, ticket)
+        except AccountError:
+            raise web.HTTPUnauthorized() from None
+        result = self.store.account_pair(self.account.data['owner'], installation, self.account.data['device_key'],
+                                         existing_device=self.store.authenticate(bearer(request)) if bearer(request) else None)
+        if not result:
+            raise web.HTTPForbidden()
+        return web.json_response(result, headers={'Cache-Control': 'no-store'})
 
     async def health(self):
         available = False
