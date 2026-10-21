@@ -54,6 +54,8 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
     val listening=live.active && live.phase in setOf("listening","armed","waiting_wake")
     val preparing=live.active && live.phase in setOf("preparing","processing")
     val speaking=live.active && live.phase=="speaking"
+    val processing=live.active && (live.phase=="processing" || busy)
+    val primaryAction=VoiceControlPolicy.primaryAction(permission,speaking,processing,live.active)
     val transcript=live.transcript
     val latest=messages.lastOrNull { it.role=="assistant" && it.ts>=enteredAt }
     val latestUser=messages.lastOrNull { it.role=="user" && it.ts>=enteredAt }
@@ -140,7 +142,7 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
                 else PunkIcon(PunkGlyph.Mic,tint=PunkNeonCyan,modifier=Modifier.size(38.dp))
             }
             Text(
-                when { displayError!=null -> stringResource(R.string.punk_voice_retry); !permission -> stringResource(R.string.punk_voice_enable); live.phase=="waiting_wake" -> "Diga “Punk” para ativar"; live.phase=="armed" -> "Punk ativado · diga seu pedido"; listening -> stringResource(R.string.punk_voice_listening); preparing -> if(live.phase=="processing")stringResource(R.string.punk_voice_working) else "Preparando reconhecimento…"; speaking -> "Punk está falando · fale ou toque para interromper"; busy -> stringResource(R.string.punk_voice_working); else -> stringResource(R.string.punk_voice_ready) },
+                when { displayError!=null -> stringResource(R.string.punk_voice_retry); !permission -> stringResource(R.string.punk_voice_enable); live.phase=="waiting_wake" -> "Diga “Punk” para ativar"; live.phase=="armed" -> "Punk ativado · diga seu pedido"; listening -> stringResource(R.string.punk_voice_listening); preparing -> if(live.phase=="processing")stringResource(R.string.punk_voice_working) else "Preparando reconhecimento…"; speaking -> "Punk está falando · toque para interromper"; busy -> stringResource(R.string.punk_voice_working); else -> stringResource(R.string.punk_voice_ready) },
                 style=MaterialTheme.typography.headlineMedium,
                 modifier=Modifier.semantics { liveRegion=LiveRegionMode.Polite }
             )
@@ -175,17 +177,17 @@ fun VoiceSheet(engine:AndroidVoiceEngine, vm:ChatViewModel, onDismiss:()->Unit) 
                     onDismiss()
                 },modifier=Modifier.weight(1f).heightIn(min=52.dp)) { Text(stringResource(R.string.punk_keyboard)) }
                 Button(onClick={
-                    when {
-                        !permission -> request.launch(Manifest.permission.RECORD_AUDIO)
-                        speaking -> LiveVoiceService.interrupt(context)
-                        busy -> { LiveVoiceService.stop(context); vm.stop() }
-                        live.active -> LiveVoiceService.stop(context)
-                        else -> LiveVoiceService.start(context)
+                    when(primaryAction) {
+                        VoicePrimaryAction.REQUEST_PERMISSION -> request.launch(Manifest.permission.RECORD_AUDIO)
+                        VoicePrimaryAction.INTERRUPT_SPEECH -> LiveVoiceService.interrupt(context)
+                        VoicePrimaryAction.PAUSE_LIVE -> LiveVoiceService.stop(context)
+                        VoicePrimaryAction.START_LIVE -> LiveVoiceService.start(context)
+                        VoicePrimaryAction.WAIT_FOR_REPLY -> Unit
                     }
-                },modifier=Modifier.weight(1f).heightIn(min=52.dp)) {
-                    PunkIcon(if(busy || speaking || listening || preparing)PunkGlyph.Stop else PunkGlyph.Mic)
+                },enabled=primaryAction!=VoicePrimaryAction.WAIT_FOR_REPLY,modifier=Modifier.weight(1f).heightIn(min=52.dp)) {
+                    PunkIcon(if(speaking || listening || preparing)PunkGlyph.Stop else PunkGlyph.Mic)
                     Spacer(Modifier.width(8.dp))
-                    Text(when { !permission -> stringResource(R.string.punk_activate); speaking -> "Interromper"; busy -> stringResource(R.string.punk_stop); live.active -> stringResource(R.string.punk_pause); else -> stringResource(R.string.punk_speak) })
+                    Text(when { !permission -> stringResource(R.string.punk_activate); speaking -> "Interromper"; processing -> "Enviando…"; live.active -> stringResource(R.string.punk_pause); else -> stringResource(R.string.punk_speak) })
                 }
             }
         }

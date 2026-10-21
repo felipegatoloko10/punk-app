@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -46,6 +47,8 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
     private var onDone: (() -> Unit)? = null
     private var generation = 0
     private var recognitionTimeout: Runnable? = null
+    private var deferredRecognition: Runnable? = null
+    private val captureGate = VoiceCaptureGate()
     private var destroyed = false
     private var ttsReady = false
     @Volatile private var listening = false
@@ -87,6 +90,7 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
     private fun releaseFocus() { audioManager.abandonAudioFocusRequest(focusRequest) }
     private fun finishRecognition() {
         generation++
+        deferredRecognition?.let { handler.removeCallbacks(it) }; deferredRecognition = null
         recognitionTimeout?.let { handler.removeCallbacks(it) }; recognitionTimeout = null
         runCatching { recognizer?.destroy() }; recognizer = null
         listening = false; _amplitude.value = 0f
@@ -95,6 +99,7 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
         if (id == null || id != utteranceId) return
         utteranceId = null
         speaking = false
+        captureGate.playbackEnded(SystemClock.elapsedRealtime())
         _status.value = if (error == null) VoiceStatus.Idle else VoiceStatus.Error(-1, error)
         releaseFocus()
         val callback = onDone
@@ -114,8 +119,15 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
     ) {
         main {
             if (destroyed) { onError?.invoke("Motor de voz encerrado"); return@main }
+            // No recognition request, including delayed retries, may interrupt TTS.
+            if (speaking) return@main
             if (listening || recognizer != null) return@main
-            stopSpeaking()
+            if (!captureGate.mayListen(SystemClock.elapsedRealtime())) {
+                deferRecognition(captureGate.remainingDelayMs(SystemClock.elapsedRealtime())) {
+                    startListeningWithCallbacks(onPartial, onFinal, onError, preferOnDevice, allowSystemFallback)
+                }
+                return@main
+            }
             val available = SpeechRecognizer.isRecognitionAvailable(context)
             val onDeviceAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
             val useOnDevice = preferOnDevice && onDeviceAvailable
@@ -157,9 +169,9 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
                                     SpeechRecognizer.ERROR_CLIENT
                                 )) {
                                 _status.value = VoiceStatus.Ready
-                                handler.postDelayed({
+                                deferRecognition(450) {
                                     startListeningWithCallbacks(onPartial, onFinal, onError, preferOnDevice = false, allowSystemFallback = false)
-                                }, 450)
+                                }
                                 return
                             }
                             val message = "${getErrorMessage(error)} (código $error)"
@@ -207,6 +219,14 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
             }
         }
     }
+    private fun deferRecognition(delayMs: Long, block: () -> Unit) {
+        deferredRecognition?.let { handler.removeCallbacks(it) }
+        val expectedGeneration = generation
+        deferredRecognition = Runnable {
+            deferredRecognition = null
+            if (!destroyed && generation == expectedGeneration && !speaking) block()
+        }.also { handler.postDelayed(it, delayMs.coerceAtLeast(1)) }
+    }
     override suspend fun stopListening() { main { runCatching { recognizer?.stopListening() }; listening = false; _amplitude.value = 0f; _status.value = if(recognizer == null) VoiceStatus.Idle else VoiceStatus.Processing } }
     fun cancelListening() {
         main {
@@ -223,12 +243,19 @@ class AndroidVoiceEngine(private val context: Context) : VoiceEngine {
             if (!ttsReady) { _status.value = VoiceStatus.Error(-1,"Voz ainda não está pronta. Verifique o mecanismo TTS do Android."); onDone?.invoke(); return@main }
             if (!focus()) { _status.value = VoiceStatus.Error(-1,"Áudio ocupado por outro aplicativo"); onDone?.invoke(); return@main }
             val id = UUID.randomUUID().toString()
-            utteranceId = id; this.onDone = onDone; speaking = true; _status.value = VoiceStatus.Speaking(text)
+            utteranceId = id; this.onDone = onDone; speaking = true
+            captureGate.playbackStarted()
+            _status.value = VoiceStatus.Speaking(text)
             tts?.setSpeechRate(1.05f)
             if (tts?.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), id) != TextToSpeech.SUCCESS) finishUtterance(id,"Não foi possível falar a resposta")
         }
     }
-    fun stopSpeaking() { main { utteranceId = null; onDone = null; tts?.stop(); speaking = false; _status.value = VoiceStatus.Idle; releaseFocus() } }
+    fun stopSpeaking() { main {
+        if (!speaking && utteranceId == null) return@main
+        utteranceId = null; onDone = null; tts?.stop(); speaking = false
+        captureGate.playbackEnded(SystemClock.elapsedRealtime())
+        _status.value = VoiceStatus.Idle; releaseFocus()
+    } }
     override fun isListening(): Boolean = listening
     fun isSpeaking(): Boolean = speaking
     override fun amplitude(): Float = _amplitude.value

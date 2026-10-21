@@ -1,5 +1,12 @@
 # Punk + Hermes Mobile — diagnóstico e roadmap
 
+## Atualização 3.5.2: voz e conexão visual
+
+- Corrigida a reabertura precoce da escuta: confirmação da mensagem do usuário e primeiro trecho de streaming não significam resposta final do assistente.
+- O Live suspende captura durante o TTS e espera 900 ms após a fala. A interrupção automática por volume saiu do fluxo ativo após auto-interrupções observadas no S23; o botão de interrupção permanece.
+- Painel Windows inicial em `ABRIR-PUNK.vbs`: conectar PC, ver estado dos componentes e gerar QR sem terminal, em instalações já provisionadas.
+- A nova prioridade proposta é 3.6 conexão/instalador, 3.7 MCP e 3.8 chat/observabilidade. O chat profissional continua no escopo; o detalhamento atualizado está em [Punk Desktop e MCP](PUNK-DESKTOP-MCP.md). O MCP e o instalador autossuficiente ainda não foram implementados.
+
 ## O que foi implementado nesta rodada
 
 - Atividades que ficaram em `running`, `pending`, `waiting`, `started` ou `executing` agora são marcadas como `interrupted` quando o app inicia novamente. Isso elimina tarefas fantasmas depois de reinício ou perda de sessão.
@@ -88,11 +95,11 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 
 - Serviço foreground de voz iniciado pelo usuário, notificação persistente, transcrição parcial, detecção de fim de fala e continuidade fora da tela do chat.
 - Reconhecimento on-device do Android quando disponível, fallback para o reconhecedor do sistema e wake phrase opcional “Punk”/“Ei, Punk”. Não foi incorporado um SDK comercial de wake word.
-- Barge-in manual sempre disponível e por voz em aparelhos com cancelamento acústico; redução de ruído é habilitada quando o Android oferece o efeito.
+- Interrupção manual disponível. O detector por voz introduzido em 3.5.0 foi retirado do fluxo ativo em 3.5.2 por confundir o TTS do alto-falante com voz do usuário.
 - Texto parcial e estado da sessão seguem ao bridge no mesmo contexto da conversa. Áudio bruto não é transmitido porque o Hermes 0.22 instalado não anuncia uma API Realtime de áudio.
 - Sincronização automática do perfil padrão para `punk-mobile`: identidade, modelo, provedor, skills, memória configurada e o mesmo toolset do Telegram, com histórico/canais/segredos isolados.
 
-### Próxima recomendação: 3.6 — conversa e observabilidade
+### Chat e observabilidade — remanejado para 3.8 na proposta Desktop/MCP
 
 - Cartões de ferramenta dentro de cada resposta, com argumentos sanitizados, progresso, resultado, duração e relação pai/filho.
 - Linha do tempo recuperável do bridge para reconciliar atividades remotas após reconexão e reinício do app.
@@ -116,7 +123,7 @@ O app deve mostrar esse diagnóstico em Dispositivos. Assim será possível prov
 
 ### P1 — expansão Live multimodal
 
-- **Concluído em 3.5.0:** cancelamento manual e barge-in por voz quando há cancelamento acústico, transcrição parcial no bridge e continuidade em foreground.
+- **Concluído:** cancelamento manual, transcrição parcial e continuidade em foreground. Em 3.5.2, captura bloqueada durante o TTS e retorno após a cauda de eco; interrupção automática exige futura validação acústica, não somente detecção de volume.
 - Tornar o fim de fala ainda mais natural e adicionar escolha de voz/velocidade.
 - Adotar áudio Realtime full-duplex quando o Hermes expuser um transporte compatível; hoje o fallback por turnos é intencional.
 - Modo câmera: apontar o celular e perguntar sobre o que está na tela/câmera.

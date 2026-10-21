@@ -12,8 +12,8 @@ android {
         applicationId = "com.punk.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 29
-        versionName = "3.5.0"
+        versionCode = 31
+        versionName = "3.5.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
@@ -73,4 +73,5 @@ dependencies {
     implementation("dev.rikka.shizuku:provider:13.1.5")
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("junit:junit:4.13.2")
 }

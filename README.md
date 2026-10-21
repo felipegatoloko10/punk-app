@@ -1,31 +1,32 @@
-# Punk · 3.5.0
+# Punk · 3.5.2
 
 **Seu agente no computador e no Android, em uma única conversa.**
 
-[Baixar APK](apk/Punk-3.5.0.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.5.0-validation.json) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
+[Baixar APK](apk/Punk-3.5.2.apk) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.5.2-validation.json) · [Desktop e MCP](docs/PUNK-DESKTOP-MCP.md) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
 
 Aplicativo Android nativo para conversar com o seu Punk e usar as ferramentas do Hermes no computador e no celular. Interface em português, com fundo grafite, destaque ciano e três áreas: **Conversa**, **Dispositivos** e **Atividade**.
 
 ## Instalar no celular
 
-O APK está em [`apk/Punk-3.5.0.apk`](apk/Punk-3.5.0.apk), versão 3.5.0, código 29, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
+O APK está em [`apk/Punk-3.5.2.apk`](apk/Punk-3.5.2.apk), versão 3.5.2, código 31, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
 
 1. Copie o APK para o S23 Ultra e instale.
-2. No PC, execute `bridge/INICIAR-PUNK.ps1` para iniciar o novo bridge.
-3. Execute `bridge/PAREAR-PUNK.ps1`: abre uma página local com QR de uso único, válido por cinco minutos.
+2. No PC já configurado, abra **ABRIR-PUNK.vbs** com duplo clique: o painel Punk Desktop mostra a conexão e oferece **Conectar ao PC**.
+3. No painel, clique **Conectar celular · mostrar QR**: abre uma página local com QR de uso único, válido por cinco minutos. Os scripts `bridge/INICIAR-PUNK.ps1` e `bridge/PAREAR-PUNK.ps1` continuam disponíveis para manutenção.
 4. No app, abra **Configurações → Ler QR code**. Também é possível importar o `bridge/runtime/pairing.json` ou colar seu conteúdo.
 5. Em **Dispositivos**, ative os recursos desejados. Microfone, câmera, localização, contatos e SMS têm concessões próprias; acessibilidade e Shizuku são apresentados separadamente.
 
 As portas novas são **18765 (TLS)** e **18766 (API privada em loopback)**, preservando o bridge anterior nas portas 8765/8766 durante a transição. O canal do celular exige token por dispositivo e confere a identidade criptográfica do PC. O modo remoto usa seu Tailscale já conectado; o aplicativo não alterna a VPN automaticamente.
 
-Em uma instalação nova no computador, siga primeiro a [provisão do bridge](bridge/README.md). Os scripts de início e pareamento pressupõem que essa configuração já existe; o repositório não inclui as credenciais nem a identidade pessoal do agente.
+Em uma instalação nova no computador, siga primeiro a [provisão do bridge](bridge/README.md). O painel e os scripts pressupõem que essa configuração já existe; o repositório não inclui as credenciais nem a identidade pessoal do agente. O instalador autossuficiente e o servidor MCP estão planejados em [Desktop e MCP](docs/PUNK-DESKTOP-MCP.md), ainda não implementados.
 
 ## O que foi implementado
 
 - Conversa com streaming, Markdown, código copiável, múltiplas conversas, histórico persistente, busca, exportação e repetição explícita de pedidos interrompidos.
 - Modo Live persistente em foreground: continua ativo ao fechar a folha ou apagar a tela, mantém notificação com controles e reabre a escuta após cada resposta.
 - Wake phrase opcional “Punk”/“Ei, Punk”, reconhecimento local quando disponível, fallback para o reconhecedor do sistema, transcrição parcial e indicação clara de escuta, processamento e fala.
-- Barge-in: o botão **Interromper e falar** sempre corta o TTS; interrupção por voz é ativada quando o aparelho oferece cancelamento acústico, evitando que o próprio alto-falante seja confundido com o usuário.
+- Proteção contra eco: o microfone permanece fechado durante o TTS e por 900 ms após o término ou interrupção. O botão **Interromper e falar** corta o TTS; o detector automático baseado em volume foi retirado do fluxo ativo após reproduzir auto-interrupções no S23.
+- Envio de voz com ID registrado antes do envio; o botão de voz não cancela o pedido enquanto o Hermes processa. A escuta aguarda o término da resposta do assistente, não apenas a confirmação da mensagem do usuário.
 - Telemetria Live sem áudio bruto: sessão, bateria, modo do reconhecedor e texto parcial seguem ao bridge; nenhuma captura de microfone é gravada ou enviada.
 - Cartões de dispositivos e permissões com estado real. A aba Atividade agora mostra duração, origem, status técnico, ID, última atualização, entradas e resultados sanitizados das ferramentas.
 - Diagnóstico ADB em tempo real: o app separa “Depuração USB ativada” de “PC conectado e autorizado”. O bridge verifica o `adb devices` local a cada dez segundos e informa conectado, aguardando autorização, offline, ausente ou erro sem transmitir o serial do aparelho.
@@ -63,9 +64,9 @@ O plugin `punk_control` aplica a política de execução independentemente do mo
 
 O controle é limitado às permissões concedidas pelo Android, acessibilidade e Shizuku sem root, e aos acessos da sessão Windows do Hermes. Telas protegidas, dados privados de outros aplicativos, janelas elevadas e operações em segundo plano podem ser restritos. O Live exige uma sessão iniciada pelo usuário e exibe notificação persistente enquanto usa o microfone. Resposta de notificação só funciona quando a própria notificação expõe uma ação de resposta direta. Operações de administração são marcadas individualmente como destrutivas no catálogo e permanecem na trilha de auditoria sanitizada.
 
-O modo Live usa STT/TTS do Android e continua sendo conversação por turnos: a instalação atual do Hermes não expõe transporte Realtime de áudio. O barge-in interrompe a fala e abre uma nova escuta, mas não transmite áudio full-duplex. A wake phrase é reconhecida por software durante a sessão Live, não por DSP de baixíssimo consumo. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
+O modo Live usa STT/TTS do Android e continua sendo conversação por turnos: a instalação atual do Hermes não expõe transporte Realtime de áudio. Durante a fala, use o botão para interromper; a interrupção automática por voz não está ativa nesta versão. A wake phrase é reconhecida por software durante a escuta Live, não durante o TTS nem por DSP de baixíssimo consumo. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
 
-Validação desta versão: **28 testes Android e 18 testes Python passaram**, release assinada e lint sem erros bloqueantes. Foram exercitados política, cancelamento, replay, contratos de ferramentas, wake phrase, sincronização de identidade/toolset, push seguro de eventos, privacidade, auditoria, estados do ADB e atualização de saúde pelo WebSocket. Os testes do bridge usam TLS real e Hermes simulado. No S23 Ultra foram confirmados instalação, versão, reconexão automática do bridge e renderização do novo painel Live. As bibliotecas nativas do APK foram verificadas quanto ao alinhamento de página.
+Validação desta versão: **37 testes Android/JVM e 18 testes Python passaram**, release assinada e lint sem erros bloqueantes. A suíte cobre bloqueio de captura durante a fala, cauda de eco, espera pela resposta final, envio, política, cancelamento, replay e contratos das ferramentas. O teste assíncrono de eventos de voz foi movido para a suíte assíncrona para executar efetivamente suas verificações. Os testes do bridge usam TLS real e Hermes simulado. No S23 Ultra foram confirmados instalação 3.5.2/código 31 e reconexão do bridge, Hermes e ADB; o teste acústico de uma conversa falada ainda não foi confirmado. O painel Desktop passou por teste de inicialização e conexão com interface assíncrona; requer o PC previamente provisionado.
 
 O Shizuku foi verificado no aparelho em execução via ADB wireless, autorizado e operando como UID 2000 (`shell`). Isso não significa que o Windows tenha enumerado o telefone: o cartão **ADB com o PC** continua sendo um diagnóstico separado e pode permanecer desconectado sem impedir as ferramentas locais via Shizuku.
 

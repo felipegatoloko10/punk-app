@@ -20,12 +20,12 @@ import com.punk.bridge.BridgeService
 import com.punk.bridge.BridgeTypes
 import com.punk.chat.ChatRepository
 import com.punk.voice.AndroidVoiceEngine
-import com.punk.voice.BargeInMonitor
 import com.punk.voice.VoiceManager
 import com.punk.voice.VoiceStatus
 import com.punk.voice.WakeAction
 import com.punk.voice.WakePhraseParser
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -85,7 +85,6 @@ class LiveVoiceService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var engine: AndroidVoiceEngine
-    private val bargeIn = BargeInMonitor()
     private var listenJob: Job? = null
     private var messageJob: Job? = null
     private var heardReply = false
@@ -101,32 +100,29 @@ class LiveVoiceService : Service() {
         engine = VoiceManager.getOrCreateAndroidEngine(applicationContext)
         scope.launch {
             engine.status.collect { status ->
+                if (!_state.value.active) return@collect
                 when (status) {
                     is VoiceStatus.Ready -> update(phase = "preparing", error = null)
                     is VoiceStatus.Listening -> update(phase = if (_state.value.wakePhraseArmed) "armed" else "listening", error = null)
                     is VoiceStatus.Processing -> update(phase = "processing")
                     is VoiceStatus.Speaking -> {
+                        listenJob?.cancel()
                         waitingForReply = false
                         heardReply = true
                         update(phase = "speaking", error = null)
-                        if (bargeIn.supported) {
-                            bargeIn.start(
-                                onLevel = {},
-                                onDetected = { scope.launch { interruptForSpeech("voice") } }
-                            )
-                        }
+                        sendSessionEvent("speaking")
                     }
                     is VoiceStatus.Error -> {
-                        bargeIn.stop()
                         update(phase = "error", error = status.message)
                         if (_state.value.active && !waitingForReply) scheduleListen(900)
                     }
                     is VoiceStatus.Idle -> {
-                        bargeIn.stop()
+                        if (engine.isSpeaking()) return@collect
                         if (heardReply && _state.value.active) {
                             heardReply = false
                             currentRequestId = null
-                            scheduleListen(320)
+                            sendSessionEvent("playback_finished")
+                            scheduleListen(900)
                         } else if (!_state.value.active) update(phase = "idle")
                     }
                 }
@@ -135,12 +131,16 @@ class LiveVoiceService : Service() {
         messageJob = scope.launch {
             ChatRepository.messages.collect { messages ->
                 val request = currentRequestId ?: return@collect
-                val sent = messages.lastOrNull { it.messageId == request } ?: return@collect
-                if (sent.status in setOf("failed", "cancelled", "interrupted")) {
+                val terminalStatus = VoiceReplyPolicy.terminalStatus(request, messages) ?: return@collect
+                if (terminalStatus != "completed") {
                     waitingForReply = false
                     currentRequestId = null
                     update(phase = "error", error = "A conversa foi interrompida antes da resposta.")
                     if (_state.value.active) scheduleListen(1_000)
+                } else if (waitingForReply) {
+                    waitingForReply = false
+                    // TTS cancels this delayed fallback as soon as playback starts.
+                    scheduleListen(1_000)
                 }
             }
         }
@@ -176,7 +176,7 @@ class LiveVoiceService : Service() {
             startedForeground = true
         }
         if (_state.value.active) {
-            if (!engine.isListening() && !engine.isSpeaking()) scheduleListen(0)
+            if (!waitingForReply && !engine.isListening() && !engine.isSpeaking()) scheduleListen(0)
             return
         }
         val battery = battery()
@@ -187,7 +187,7 @@ class LiveVoiceService : Service() {
             phase = "preparing",
             wakePhraseEnabled = wake,
             onDeviceRecognition = availability.onDeviceRecognitionAvailable,
-            bargeInSupported = bargeIn.supported,
+            bargeInSupported = false,
             batteryAtStart = battery,
             batteryNow = battery,
             sessionId = UUID.randomUUID().toString()
@@ -206,6 +206,7 @@ class LiveVoiceService : Service() {
     }
 
     private fun beginListening() {
+        if (!_state.value.active || waitingForReply || engine.isSpeaking()) return
         update(phase = "preparing", transcript = "", error = null, batteryNow = battery())
         engine.startListeningWithCallbacks(
             onPartial = { partial ->
@@ -225,7 +226,7 @@ class LiveVoiceService : Service() {
             },
             onFinal = { final -> if (_state.value.active) scope.launch { handleFinal(final) } },
             onError = { message ->
-                if (_state.value.active) {
+                if (_state.value.active && !waitingForReply) {
                     update(phase = "error", error = message)
                     scheduleListen(900)
                 }
@@ -234,6 +235,7 @@ class LiveVoiceService : Service() {
     }
 
     private suspend fun handleFinal(final: String) {
+        if (waitingForReply || engine.isSpeaking()) return
         val now = System.currentTimeMillis()
         val parsed = WakePhraseParser.parse(final, _state.value.wakePhraseEnabled, armedUntil, now)
         when (parsed.action) {
@@ -255,23 +257,37 @@ class LiveVoiceService : Service() {
                     return
                 }
                 waitingForReply = true
+                val requestId = UUID.randomUUID().toString()
+                currentRequestId = requestId
                 update(phase = "processing", transcript = command, lastFinal = command, wakePhraseArmed = false, error = null)
                 sendSessionEvent("submitted")
-                currentRequestId = withContext(Dispatchers.IO) { ChatRepository.send(command, spoken = true) }
+                try {
+                    withContext(Dispatchers.IO) {
+                        ChatRepository.send(command, spoken = true, retryId = requestId)
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    waitingForReply = false
+                    currentRequestId = null
+                    update(phase = "error", error = error.message ?: "Não foi possível enviar a mensagem ao Hermes.")
+                    sendSessionEvent("send_failed")
+                    if (_state.value.active) scheduleListen(1_000)
+                }
             }
         }
     }
 
     private suspend fun interruptForSpeech(source: String) {
-        if (!_state.value.active) return
-        bargeIn.stop()
+        if (!_state.value.active || !engine.isSpeaking()) return
+        listenJob?.cancel()
         heardReply = false
         waitingForReply = false
+        currentRequestId = null
         engine.stopSpeaking()
         update(phase = "preparing", transcript = "", error = null)
         sendSessionEvent("barge_in", source)
-        delay(180)
-        beginListening()
+        scheduleListen(900)
     }
 
     private fun stopSession() {
@@ -280,7 +296,6 @@ class LiveVoiceService : Service() {
         heardReply = false
         currentRequestId = null
         armedUntil = 0L
-        bargeIn.stop()
         engine.cancelListening()
         engine.stopSpeaking()
         sendSessionEvent("stopped")
@@ -338,7 +353,7 @@ class LiveVoiceService : Service() {
         "armed" -> "Punk ativado — diga seu pedido"
         "waiting_wake" -> "Diga “Punk” para ativar"
         "processing" -> "Enviando ao Hermes…"
-        "speaking" -> "Punk está respondendo — fale para interromper"
+        "speaking" -> "Punk está respondendo — toque para interromper"
         "error" -> _state.value.error ?: "Live precisa de atenção"
         else -> "Live ativo"
     }
@@ -389,8 +404,9 @@ class LiveVoiceService : Service() {
     override fun onDestroy() {
         listenJob?.cancel()
         messageJob?.cancel()
-        bargeIn.close()
         engine.cancelListening()
+        engine.stopSpeaking()
+        _state.value = LiveVoiceState()
         scope.cancel()
         super.onDestroy()
     }
