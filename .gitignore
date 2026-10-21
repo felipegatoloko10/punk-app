@@ -30,3 +30,4 @@ captures
 /build-account.log
 /build-account-final.log
 /build-routing.log
+/build-mcp.log

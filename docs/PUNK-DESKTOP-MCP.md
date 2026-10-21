@@ -1,12 +1,15 @@
 # Punk Desktop e MCP: conexão sem terminal
 
+**Atualizado na 3.7:** veja o [guia de uso MCP](MCP-3.7.md). O desenho abaixo mantém as expansões futuras separadas do que foi entregue.
+
 ## Estado desta entrega
 
 - **Implementado em 3.5.2:** painel local Windows, aberto com duplo clique em `ABRIR-PUNK.vbs`, com estado do PC/celular/Hermes/ADB e botões para conectar e gerar o QR. Usa a instalação Hermes já provisionada e mantém o bridge em execução ao fechar a janela.
 - **Implementado em 3.5.2:** Live por turnos com captura suspensa durante o TTS e intervalo de 900 ms após o término/interrupção. A interrupção é manual; o detector baseado apenas em volume foi retirado do fluxo ativo.
 - **Implementado em 3.6.0:** Conta Punk com Neon Auth, sessões cifradas, descoberta por proprietário, vínculo persistente e túnel Cloudflare gratuito opcional. Endereço externo renovado automaticamente sem domínio comprado. Veja [uso e limites](CONTA-PUNK.md).
-- **Corrigido em 3.6.1:** túnel ativado por padrão e preferência restaurada, conexão automática para conta com um PC, migração do QR local pela identidade do PC, QR com rota externa e separação dos estados de conta e bridge. Teste físico em 4G com este APK ainda pendente.
-- **Projeto abaixo, ainda não implementado:** servidor MCP, instalador autossuficiente, descoberta mDNS, credenciais individuais de clientes MCP e configuração visual desses clientes. A descoberta pela Conta Punk já existe.
+- **Corrigido em 3.6.1:** túnel ativado por padrão e preferência restaurada, conexão automática para conta com um PC, migração do QR local pela identidade do PC, QR externo e estados separados. Acesso 4G confirmado pelo usuário.
+- **Implementado em 3.7:** MCP stdio com seis ferramentas, credencial individual DPAPI, escopo por aparelho/leitura, gestão e exportação visual, fila compartilhada, consulta/cancelamento e auditoria. Inicialização Windows opcional e gestão de aparelhos incluídas. Teste acústico Live e reinício físico continuam pendentes.
+- **Ainda não implementado:** instalador autossuficiente, mDNS, MCP remoto, upload/download MCP dedicado e configuração automática dentro de outros clientes. O painel exporta JSON sem tokens.
 
 ## Experiência desejada
 
@@ -42,7 +45,7 @@ O MCP padroniza a interface de ferramentas; não é um modelo e não confere pri
 | `punk_execute` | Executa uma ferramenta no dispositivo escolhido, com `callId`, prazo e resultado confirmado. |
 | `punk_call_status` | Consulta uma chamada já recebida, evitando repetir uma ação após queda de conexão. |
 | `punk_events` | Eventos desde um cursor, incluindo atividades e mudanças observáveis. |
-| `punk_files` | Transferências com progresso, retomada e hash, conforme capacidades concedidas. |
+| `punk_files` (futuro) | Transporte MCP dedicado de transferências com progresso, retomada e hash. |
 | `punk_cancel` | Solicita parada de uma execução específica e distingue solicitação de confirmação. |
 
 O modelo deve descobrir o schema antes de chamar ferramentas. Para clientes que funcionam melhor com ferramentas individuais, o servidor pode anunciar o catálogo nativo com schemas próprios e nomes prefixados por `punk_`.
@@ -63,8 +66,8 @@ Cada resultado preserva `ok`, `status`, `callId`, erro e origem. `timeout` signi
 ## Sequência recomendada
 
 1. **3.5.2 — estabilidade e primeiro painel:** correção de eco e painel para instalações já configuradas, entregues neste patch.
-2. **3.6.0 — conta e conexão:** login, descoberta pela conta, credenciais salvas e túnel gratuito implementados. **Ainda pendente em 3.6.x:** instalador com dependências próprias, inicialização Windows, provisão visual do Hermes, recuperação de senha e revogação visual.
-3. **3.7 — MCP:** catálogo, execução, acompanhamento/cancelamento, credencial por cliente e integração visual. Testar com dois clientes MCP e modelos diferentes.
+2. **3.6.0/3.6.1 — conta e conexão:** entregues. Instalador, provisão visual e recuperação de senha continuam pendentes. Inicialização Windows e revogação visual foram incluídas na 3.7.
+3. **3.7 — MCP:** entregue com testes de dois clientes SDK e processo stdio real. Testar com modelos comerciais distintos e validar Live/reinício no aparelho continuam pendentes.
 4. **3.8 — experiência e operação:** retomar o chat profissional e a linha do tempo de atividades, com diagnóstico de concorrência e latência entre agentes/dispositivos.
 
 O instalador só deve ser chamado de plug and play após testes em um Windows limpo sem Python, Android SDK ou Hermes pré-configurados. O painel desta versão simplifica a instalação pessoal existente; não substitui essa validação.

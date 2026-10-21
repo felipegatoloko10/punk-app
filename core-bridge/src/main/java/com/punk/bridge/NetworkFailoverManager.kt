@@ -28,6 +28,7 @@ object NetworkFailoverManager {
                         val config=if(target.isNotEmpty())runCatching { PunkAccount.connect(ctx,target) }.getOrNull()
                             else ConnectionRoutes.reachable(BridgePrefs.pairRoutes(ctx,current))
                         if(config==null)return@launch
+                        if(config!=current)BridgePrefs.save(ctx,config)
                         if(config!=current || BridgeService.state.value !is BridgeState.Connected)
                             ctx.startForegroundService(Intent(ctx,BridgeService::class.java).setAction(BridgeService.ACTION_START))
                     }

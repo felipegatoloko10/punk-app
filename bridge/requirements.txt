@@ -1,3 +1,5 @@
 aiohttp>=3.12,<4
 cryptography>=45,<51
 qrcode[pil]>=8.2,<9
+mcp==2.0.0
+jsonschema>=4.26,<5

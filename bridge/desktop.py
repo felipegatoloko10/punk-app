@@ -10,7 +10,8 @@ import urllib.error
 import urllib.request
 import webbrowser
 from pathlib import Path
-from tkinter import ttk
+from tkinter import ttk, messagebox, filedialog
+from windows_startup import startup_enabled, set_startup
 
 
 ROOT = Path(__file__).resolve().parent
@@ -25,6 +26,28 @@ class Connection:
     def __init__(self, root=ROOT):
         self.root = Path(root)
         self.runtime = self.root / 'runtime'
+
+    def manage(self, action=None, data=None):
+        self.connect()
+        config = json.loads((self.runtime / 'config.json').read_text('utf-8'))
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{int(config.get('internalPort',18766))}/api/manage" + ('/' + action if action else ''),
+            data=json.dumps(data or {}).encode() if action else None,
+            headers={'Authorization':'Bearer ' + config['internalToken'], 'Content-Type':'application/json'})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        try:
+            with opener.open(req, timeout=40) as response:
+                return json.load(response)
+        except urllib.error.HTTPError:
+            raise RuntimeError('Gestão indisponível. Atualize o bridge ou confira a seleção e as permissões.') from None
+
+    def mcp_config(self, client):
+        import re
+        if not re.fullmatch(r'[a-f0-9-]{36}', client):
+            raise RuntimeError('Selecione uma integração válida.')
+        # A client ID is not a secret. DPAPI credentials are loaded only by the local adapter.
+        return {'mcpServers': {'punk-' + client[:8]: {'command': str(Path(sys.executable).with_name('python.exe')),
+            'args': [str(self.root.resolve() / 'mcp_server.py'), '--runtime', str(self.runtime.resolve()), '--client', client]}}}
 
     def account(self, action=None, data=None):
         self.connect()
@@ -109,8 +132,8 @@ class Desktop:
         self.polling = False
         self.closed = False
         root.title('Punk Desktop')
-        root.geometry('540x760')
-        root.minsize(480, 720)
+        root.geometry('580x920')
+        root.minsize(480, 650)
         root.configure(bg='#0b1018')
         style = ttk.Style(root)
         style.theme_use('clam')
@@ -118,8 +141,14 @@ class Desktop:
         style.configure('TLabel', background='#0b1018', foreground='#e6edf5', font=('Segoe UI', 11))
         style.configure('Title.TLabel', font=('Segoe UI', 26, 'bold'), foreground='#91e6ec')
         style.configure('TButton', font=('Segoe UI', 11), padding=12)
-        frame = ttk.Frame(root, padding=28)
-        frame.pack(fill='both', expand=True)
+        canvas = tk.Canvas(root, bg='#0b1018', highlightthickness=0)
+        scroll = ttk.Scrollbar(root, orient='vertical', command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side='right', fill='y'); canvas.pack(side='left', fill='both', expand=True)
+        frame = ttk.Frame(canvas, padding=28)
+        window = canvas.create_window((0,0),window=frame,anchor='nw')
+        frame.bind('<Configure>',lambda event: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>',lambda event: canvas.itemconfigure(window,width=event.width))
         ttk.Label(frame, text='Punk Desktop', style='Title.TLabel').pack(anchor='w')
         ttk.Label(frame, text='Seu celular conectado ao seu assistente.').pack(anchor='w', pady=(4, 24))
         self.summary = tk.StringVar(value='Verificando conexão…')
@@ -148,6 +177,15 @@ class Desktop:
         self.account_notice = tk.StringVar(value='Entre na mesma conta no PC e no celular. Não é necessário comprar domínio.')
         ttk.Label(frame, textvariable=self.account_notice, wraplength=440).pack(anchor='w', pady=8)
         self.remote_enabled = False
+        self.manager = None
+        self.management_pending = False
+        self.new_client = None
+        self.autostart = tk.BooleanVar(value=startup_enabled(getattr(self.connection,'root',ROOT)))
+        ttk.Checkbutton(frame, text='Iniciar Punk ao entrar no Windows', variable=self.autostart,
+                        command=self.toggle_startup).pack(anchor='w',pady=8)
+        ttk.Button(frame,text='Aparelhos, integrações MCP e histórico',command=self.open_management).pack(fill='x',pady=5)
+        ttk.Label(frame,text='Inicialização automática é opcional. O PC precisa estar ligado e acordado.',
+                  wraplength=460).pack(anchor='w',pady=6)
         root.protocol('WM_DELETE_WINDOW', self.close)
         root.after(100, self.pump)
         self.refresh()
@@ -169,6 +207,112 @@ class Desktop:
         self.account_notice.set('Conectando sua conta…')
         data = {'email': email, 'password': password} if action in ('login', 'signup') else {'enabled': not self.remote_enabled}
         self.submit('account', lambda: self.connection.account(action, data))
+
+    def toggle_startup(self):
+        try:
+            enabled = set_startup(getattr(self.connection,'root',ROOT), self.autostart.get())
+            self.autostart.set(enabled)
+            self.notice.set('Inicialização automática ativada para seu usuário.' if enabled else 'Inicialização automática desativada.')
+        except (OSError, ValueError, RuntimeError) as error:
+            self.autostart.set(startup_enabled(getattr(self.connection,'root',ROOT)))
+            self.notice.set(str(error) if isinstance(error,RuntimeError) else 'Não foi possível alterar a inicialização automática deste usuário.')
+
+    def open_management(self):
+        if self.manager and self.manager.winfo_exists():
+            self.manager.lift(); return
+        self.manager = tk.Toplevel(self.root)
+        self.manager.title('Punk · aparelhos e integrações MCP')
+        self.manager.geometry('960x690')
+        tabs = ttk.Notebook(self.manager); tabs.pack(fill='both',expand=True,padx=12,pady=12)
+        self.management_trees = {}
+        specs = [('devices','Aparelhos',('name','connected','revoked','voice','id')),
+                 ('integrations','Integrações MCP',('name','read_only','revoked','id')),
+                 ('calls','Execuções',('tool','status','client','id')),
+                 ('audit','Histórico',('ts','actor','action','target','status'))]
+        frames = {}
+        for key,title,columns in specs:
+            page = ttk.Frame(tabs,padding=10); tabs.add(page,text=title); frames[key]=page
+            tree = ttk.Treeview(page,columns=columns,show='headings',height=13)
+            for column in columns:
+                tree.heading(column,text={'name':'Nome','connected':'Conectado','revoked':'Revogado','read_only':'Só leitura',
+                    'client':'Cliente','actor':'Responsável','tool':'Ferramenta','status':'Estado','ts':'Horário','target':'Alvo','action':'Ação','voice':'Live'}.get(column,column))
+                tree.column(column,width=160,minwidth=90)
+            tree.pack(fill='both',expand=True)
+            bar = ttk.Scrollbar(page,orient='horizontal',command=tree.xview);bar.pack(fill='x');tree.configure(xscrollcommand=bar.set)
+            self.management_trees[key]=tree
+        for text,action in [('Desconectar agora','disconnect-device'),('Revogar acesso','revoke-device'),('Permitir novo vínculo','allow-repair')]:
+            ttk.Button(frames['devices'],text=text,command=lambda a=action:self.management_action(a,'devices')).pack(side='left',padx=4,pady=10)
+        ttk.Label(frames['devices'],text='Desconectar permite reconexão automática. Revogar bloqueia a credencial e exige novo pareamento.').pack(anchor='w')
+        ttk.Button(frames['devices'],text='Solicitar parada de todas as pendências do aparelho',
+            command=lambda:self.management_action('cancel-device-calls','devices')).pack(anchor='w',pady=5)
+        entry = ttk.Frame(frames['integrations']);entry.pack(fill='x',pady=8)
+        self.client_name=tk.StringVar(value='Meu agente')
+        ttk.Entry(entry,textvariable=self.client_name).pack(side='left',fill='x',expand=True)
+        self.client_readonly=tk.BooleanVar(value=True)
+        ttk.Checkbutton(entry,text='Somente leitura',variable=self.client_readonly).pack(side='left',padx=8)
+        self.client_device=tk.StringVar(value='Todos os aparelhos')
+        self.client_device_choice=ttk.Combobox(frames['integrations'],textvariable=self.client_device,state='readonly')
+        self.client_device_choice.pack(fill='x')
+        actions = ttk.Frame(frames['integrations']);actions.pack(fill='x',pady=8)
+        ttk.Button(actions,text='Criar integração',command=self.create_client).pack(side='left')
+        ttk.Button(actions,text='Configuração para o cliente',command=self.show_mcp_config).pack(side='left',padx=5)
+        ttk.Button(actions,text='Revogar',command=lambda:self.management_action('revoke-client','integrations')).pack(side='left')
+        ttk.Label(frames['integrations'],text='Compatível com clientes MCP stdio. Configuração sem tokens; cofre vinculado ao usuário Windows.\n'
+            'Controle completo permite ações sensíveis. A supervisão do celular continua válida.',wraplength=820).pack(anchor='w')
+        ttk.Button(frames['calls'],text='Solicitar parada da execução selecionada',command=lambda:self.management_action('cancel-call','calls')).pack(anchor='w',pady=8)
+        self.management_notice=tk.StringVar(value='Carregando…')
+        ttk.Label(self.manager,textvariable=self.management_notice,wraplength=880).pack(anchor='w',padx=14)
+        ttk.Button(self.manager,text='Atualizar',command=self.refresh_management).pack(anchor='e',padx=14,pady=8)
+        self.refresh_management()
+        self.manager.after(4_000,self.poll_management)
+
+    def refresh_management(self):
+        if self.management_pending:return
+        self.management_pending=True
+        self.submit('management',self.connection.manage)
+
+    def poll_management(self):
+        if self.closed or not self.manager or not self.manager.winfo_exists():return
+        self.refresh_management()
+        self.manager.after(4_000,self.poll_management)
+
+    def selected_management(self, key):
+        tree=self.management_trees[key];selected=tree.selection()
+        return selected[0] if selected else None
+
+    def management_action(self, action, key):
+        target=self.selected_management(key)
+        if not target:
+            self.management_notice.set('Selecione um item.');return
+        if not messagebox.askyesno('Confirmar alteração','Aplicar esta alteração ao item selecionado?\nExecuções podem ser interrompidas.',parent=self.manager):
+            return
+        self.management_notice.set('Aplicando…')
+        self.submit('management_action',lambda:self.connection.manage(action,{'id':target}))
+
+    def create_client(self):
+        name=self.client_name.get().strip()
+        if not name:
+            self.management_notice.set('Dê um nome à integração.');return
+        devices=[] if self.client_device.get()=='Todos os aparelhos' else [self.client_device.get()]
+        read_only=self.client_readonly.get()
+        if not read_only and not messagebox.askyesno('Controle completo',
+                'Este cliente poderá executar ações, enviar dados e alterar o celular dentro das permissões concedidas. Autorizar?',parent=self.manager):return
+        self.submit('management_action',lambda:self.connection.manage('create-client',{'name':name,'devices':devices,'readOnly':read_only}))
+
+    def show_mcp_config(self):
+        client=self.selected_management('integrations')
+        if not client:
+            self.management_notice.set('Selecione uma integração.');return
+        config=json.dumps(self.connection.mcp_config(client),ensure_ascii=False,indent=2)
+        window=tk.Toplevel(self.manager);window.title('Punk MCP · configuração sem tokens');window.geometry('760x430')
+        text=tk.Text(window,wrap='word');text.insert('1.0',config);text.configure(state='disabled');text.pack(fill='both',expand=True)
+        def copy():
+            self.root.clipboard_clear();self.root.clipboard_append(config)
+        def save():
+            path=filedialog.asksaveasfilename(parent=window,defaultextension='.json',initialfile='punk-mcp.json',filetypes=[('JSON','*.json')])
+            if path:Path(path).write_text(config,encoding='utf-8')
+        ttk.Button(window,text='Copiar configuração',command=copy).pack(side='left',padx=10,pady=10)
+        ttk.Button(window,text='Salvar JSON…',command=save).pack(side='left')
 
     def submit(self, kind, function):
         future = self.executor.submit(function)
@@ -221,10 +365,47 @@ class Desktop:
                         self.summary.set('A instalação deste PC ainda precisa ser concluída.')
                     else:
                         self.summary.set('\n'.join([
-                            'PC · ' + ('conectado' if data['online'] else 'desconectado'),
+                            'Conta · ' + ('conectada' if account.get('signedIn') else 'não conectada'),
+                            'PC / bridge · ' + ('disponível' if data['online'] else 'indisponível'),
                             'Celular · ' + ('conectado' if data.get('phone') else 'aguardando conexão'),
-                            'Hermes · ' + ('disponível' if health.get('hermes') else 'aguardando'),
+                            'Hermes · ' + ('pronto' if health.get('hermes') and health.get('policy') else 'API disponível; política pendente' if health.get('hermes') else 'indisponível'),
                             'ADB no PC · ' + ('conectado' if health.get('adb') else 'não conectado')]))
+            elif kind in ('management','management_action'):
+                if kind=='management':self.management_pending=False
+                if not self.manager or not self.manager.winfo_exists():continue
+                if error:
+                    self.management_notice.set(error)
+                elif kind=='management_action':
+                    if data.get('id'):self.new_client=data['id']
+                    status=data.get('status','')
+                    self.management_notice.set('Parada solicitada, ainda sem confirmação.' if status=='cancel_requested' else 'Alteração aplicada.' + (' Integração criada; selecione-a para copiar a configuração.' if data.get('id') else ''))
+                    self.refresh_management()
+                else:
+                    labels={c['id']:c['name'] for c in data.get('integrations',[])}
+                    labels.update({'hermes':'Hermes','desktop':'Punk Desktop'})
+                    for key,tree in self.management_trees.items():
+                        selected=tree.selection()
+                        position=tree.yview()
+                        tree.delete(*tree.get_children())
+                        for row in data.get(key,[]):
+                            item=str(row.get('id',row.get('seq')))
+                            values=[]
+                            for col in tree['columns']:
+                                value=row.get(col,'')
+                                if col in ('connected','revoked','read_only'):value='Sim' if value else 'Não'
+                                elif col=='ts':value=time.strftime('%d/%m %H:%M:%S',time.localtime(value))
+                                elif col in ('actor','client'):value=labels.get(value,value)
+                                elif col=='voice':value=value.get('phase','Ativo') if value and value.get('active') else 'Inativo'
+                                values.append(value)
+                            tree.insert('', 'end',iid=item,values=values)
+                        if selected and tree.exists(selected[0]):tree.selection_set(selected[0])
+                        if position:tree.yview_moveto(position[0])
+                    if self.new_client and self.management_trees['integrations'].exists(self.new_client):
+                        self.management_trees['integrations'].selection_set(self.new_client)
+                        self.new_client=None
+                    choices=['Todos os aparelhos']+[d['id'] for d in data.get('devices',[]) if not d['revoked']]
+                    self.client_device_choice.configure(values=choices)
+                    if self.client_device.get() not in choices:self.client_device.set(choices[0])
             elif kind == 'account':
                 self.busy = False
                 for button in self.account_buttons:

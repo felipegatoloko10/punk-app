@@ -19,6 +19,7 @@ class PunkApp:Application() {
         ChatRepository.start(this)
         appScope.launch { BridgePrefs.initialize(this@PunkApp); ControlPolicy.applyMode(BridgePrefs.supervised(this@PunkApp)) }
         BridgeService.toolCatalog={ ToolRegistry.catalog() }
+        BridgeService.deviceCapabilities={ ToolRegistry.capabilities(this@PunkApp) }
         BridgeService.awaitLocalToolsIdle={
             withTimeoutOrNull(4_000) {
                 while(com.punk.accessibility.PunkAccessibilityService.hasPendingGestures()) delay(25)

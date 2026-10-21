@@ -1,29 +1,35 @@
-# Punk · 3.6.1
+# Punk · 3.7.0
 
 **Seu agente no computador e no Android, em uma única conversa.**
 
-[Baixar APK](apk/Punk-3.6.1.apk) · [Conta e acesso externo](docs/CONTA-PUNK.md) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.6.1-validation.json) · [Desktop e MCP](docs/PUNK-DESKTOP-MCP.md) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
+[Baixar APK](apk/Punk-3.7.0.apk) · [Conta e acesso externo](docs/CONTA-PUNK.md) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.7.0-validation.json) · [Usar MCP](docs/MCP-3.7.md) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
 
 Aplicativo Android nativo para conversar com o seu Punk e usar as ferramentas do Hermes no computador e no celular. Interface em português, com fundo grafite, destaque ciano e três áreas: **Conversa**, **Dispositivos** e **Atividade**.
 
 ## Instalar no celular
 
-O APK está em [`apk/Punk-3.6.1.apk`](apk/Punk-3.6.1.apk), versão 3.6.1, código 33, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
+O APK está em [`apk/Punk-3.7.0.apk`](apk/Punk-3.7.0.apk), versão 3.7.0, código 34, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
 
-Novo em 3.6.1: **acesso externo automático e salvo**, conexão pela Internet antes da rota local, QR com rota externa e fallback local/VPN, DNS IPv4/IPv6 e indicação separada de conta/PC conectado. No Desktop, entre na conta; o túnel é ativado por padrão, respeitando uma desativação explícita. No Android, entre na mesma conta; se houver apenas um PC, o app tenta conectar automaticamente. Não é necessário comprar domínio nem copiar tokens. [Instruções e limites](docs/CONTA-PUNK.md).
+Novo em 3.7.0: **MCP local e gestão visual de acessos**, com inicialização opcional ao entrar no Windows, fila compartilhada por aparelho, chamadas persistentes e credencial individual por integração. O Desktop distingue conta, bridge, celular e prontidão do Hermes. O Android publica capacidades e permissões atuais. A conexão externa automática da 3.6.1 continua disponível; o usuário confirmou acesso pelo 4G. [Como conectar seu cliente MCP](docs/MCP-3.7.md).
 
 1. Copie o APK para o S23 Ultra e instale.
 2. No PC já configurado, abra **ABRIR-PUNK.vbs** com duplo clique: o painel Punk Desktop mostra a conexão e oferece **Conectar ao PC**.
 3. No painel, clique **Conectar celular · mostrar QR**: abre uma página local com QR de uso único, válido por cinco minutos. Os scripts `bridge/INICIAR-PUNK.ps1` e `bridge/PAREAR-PUNK.ps1` continuam disponíveis para manutenção.
 4. No app, abra **Configurações → Ler QR code**. Também é possível importar o `bridge/runtime/pairing.json` ou colar seu conteúdo.
 5. Em **Dispositivos**, ative os recursos desejados. Microfone, câmera, localização, contatos e SMS têm concessões próprias; acessibilidade e Shizuku são apresentados separadamente.
+6. Opcionalmente, marque **Iniciar Punk ao entrar no Windows** no Desktop. Vale só para seu usuário; não instala serviço privilegiado nem modifica a inicialização do Hermes.
+7. Em **Aparelhos, integrações MCP e histórico**, gerencie acessos e copie/salve a configuração sem tokens para seu cliente MCP stdio.
 
 As portas novas são **18765 (TLS)** e **18766 (API privada em loopback)**, preservando o bridge anterior nas portas 8765/8766 durante a transição. O canal do celular exige credencial por dispositivo. Na rede local, confere a identidade criptográfica do PC; no modo Conta Punk remoto, usa HTTPS/WebSocket pela Cloudflare com certificado público válido. O Tailscale manual continua como alternativa, sem alternar a VPN automaticamente.
 
-Em uma instalação nova no computador, siga primeiro a [provisão do bridge](bridge/README.md). O painel e os scripts pressupõem que essa configuração já existe; o repositório não inclui as credenciais nem a identidade pessoal do agente. O instalador autossuficiente e o servidor MCP estão planejados em [Desktop e MCP](docs/PUNK-DESKTOP-MCP.md), ainda não implementados.
+Em uma instalação nova no computador, siga primeiro a [provisão do bridge](bridge/README.md). O painel e os scripts pressupõem que essa configuração já existe; o repositório não inclui as credenciais nem a identidade pessoal do agente. O MCP stdio está implementado; o instalador autossuficiente e o transporte MCP remoto continuam pendentes.
 
 ## O que foi implementado
 
+- MCP com seis ferramentas: descobrir aparelhos/catálogo, executar, consultar resultado, solicitar parada e ler eventos. Não troca o provedor nem replica a memória do Hermes em outro modelo.
+- Gestão visual de aparelhos e integrações, escopo por aparelho, somente leitura ou controle completo e revogação. Segredos MCP cifrados por DPAPI; SQLite guarda apenas seus hashes.
+- Fila única de ferramentas por aparelho, compartilhada entre Hermes e MCP. `callId` vinculado ao cliente, aparelho, ferramenta e hash dos argumentos. Falha de rede ou reinício não repete uma ação; resultado desconhecido exige reconciliação/parada confirmada.
+- Histórico administrativo sem argumentos, transcrições, resultados ou tokens; atividades identificam o cliente responsável. Parada solicitada não é parada confirmada e não desfaz efeitos já realizados.
 - Conta gerenciada pelo Neon, cadastro/criação de conta no Desktop e Android, credenciais de sessão cifradas e renovação automática do JWT. Senhas não são persistidas.
 - Descoberta de computadores por proprietário, convites de conexão com 90 segundos e uso único, vínculo estável por instalação e respeito à revogação. A migração de um QR válido para conta conserva o ID do aparelho e o histórico do bridge.
 - Acesso externo opcional via Cloudflare Quick Tunnel, sem domínio comprado. Download oficial com SHA-256, processo supervisionado pelo bridge, verificação TLS da origem e atualização automática do endereço na conta.
@@ -72,7 +78,7 @@ O controle é limitado às permissões concedidas pelo Android, acessibilidade e
 
 O modo Live usa STT/TTS do Android e continua sendo conversação por turnos: a instalação atual do Hermes não expõe transporte Realtime de áudio. Durante a fala, use o botão para interromper; a interrupção automática por voz não está ativa nesta versão. A wake phrase é reconhecida por software durante a escuta Live, não durante o TTS nem por DSP de baixíssimo consumo. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
 
-Validação 3.6.1: consulte o [relatório da versão](apk/Punk-3.6.1-validation.json) para contagens e verificações. O cliente OkHttp do app acessou a rota pública real e confirmou a exigência de autenticação. As suítes cobrem ordem das rotas, separação de portas/certificados, compatibilidade com QR antigo e novo, IPv6, persistência do acesso externo e mensagens de erro sem segredos. A instalação anterior já verificou login real, restauração DPAPI, renovação, isolamento entre usuários e WebSocket por túnel isolado. Ainda é necessário repetir o teste no 4G do telefone físico com o novo APK; não havia aparelho no ADB. O teste acústico Live também permanece pendente. O painel Desktop requer o PC previamente provisionado.
+Validação 3.7.0: consulte o [relatório](apk/Punk-3.7.0-validation.json) e as [notas da entrega](docs/RELEASE-3.7.0.md). As suítes exercitam MCP com o SDK oficial, processo stdio real e dois clientes isolados, fila compartilhada com Hermes, escopos, revogação, timeout, resultados tardios, cancelamento, reinício e inicialização Windows em chave de teste isolada. Não usam modelos comerciais nem operam o telefone real. O acesso 4G foi confirmado pelo usuário na 3.6.1; a troca de rede/reinício físico e o teste acústico Live com o APK 3.7 continuam pendentes, pois não havia telefone no ADB. Shizuku local não depende desse cabo. O painel Desktop requer o PC previamente provisionado.
 
 O Shizuku foi verificado no aparelho em execução via ADB wireless, autorizado e operando como UID 2000 (`shell`). Isso não significa que o Windows tenha enumerado o telefone: o cartão **ADB com o PC** continua sendo um diagnóstico separado e pode permanecer desconectado sem impedir as ferramentas locais via Shizuku.
 

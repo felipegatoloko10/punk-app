@@ -1,5 +1,9 @@
 # Punk + Hermes Mobile — diagnóstico e roadmap
 
+## Atualização 3.7.0: fechamento de conexão e MCP
+
+A 3.7 absorve a proposta 3.6.2: inicialização Windows opt-in, estados separados e gestão visual de aparelhos/revogação. MCP stdio com credencial por cliente, escopo por aparelho, catálogo, execução, consulta/cancelamento e eventos usa a mesma fila das ferramentas encaminhadas pelo Hermes. Não repete ações desconhecidas após timeout/reinício. [Guia 3.7](MCP-3.7.md). Instalador autossuficiente, MCP remoto e testes físicos Live/reinício continuam pendentes. Próximo foco: 3.8.
+
 ## Atualização 3.5.2: voz e conexão visual
 
 - Corrigida a reabertura precoce da escuta: confirmação da mensagem do usuário e primeiro trecho de streaming não significam resposta final do assistente.

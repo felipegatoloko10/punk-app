@@ -49,6 +49,7 @@ class BridgeService : Service() {
         var awaitLocalToolsIdle: (suspend () -> Boolean)? = null
         var messageConsumer: ((BridgeMessage) -> Unit)? = null
         var toolCatalog: (() -> JsonArray)? = null
+        var deviceCapabilities: (() -> JsonObject)? = null
         private val _health = MutableStateFlow<JsonObject>(JsonObject(emptyMap()))
         val health: StateFlow<JsonObject> = _health
 
@@ -101,6 +102,7 @@ class BridgeService : Service() {
                 context = this@BridgeService,
                 config = config,
                 catalog = toolCatalog?.invoke() ?: JsonArray(emptyList()),
+                capabilities = { deviceCapabilities?.invoke() ?: JsonObject(emptyMap()) },
                 scope = scope,
                 onState = { s -> updateState(s); updateNotificationFor(s) },
                 onMessage = { msg ->

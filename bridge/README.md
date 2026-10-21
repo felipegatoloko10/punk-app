@@ -6,6 +6,8 @@ On Windows, the helper scripts use the Python interpreter at `%LOCALAPPDATA%/her
 
 ## Provision and start
 
+Version 3.7 adds local stdio MCP and visual device/integration management. Use **Aparelhos, integrações MCP e histórico** on Desktop. Client credentials are individually scoped, revocable and encrypted using Windows DPAPI; exported MCP JSON contains no tokens. An optional current-user Windows startup supervisor restores the bridge after login, not the Hermes gateway. [Usage and limitations](../docs/MCP-3.7.md). Install the updated requirements before restarting the bridge.
+
 For an already provisioned Windows installation, double-click **ABRIR-PUNK.vbs** in the repository root. Punk Desktop shows PC/phone/Hermes/ADB health and provides connection and expiring QR buttons without opening a terminal. It uses the existing Hermes Python environment. Closing the dashboard leaves the bridge running. This is not yet a standalone installer; see [the Desktop/MCP design](../docs/PUNK-DESKTOP-MCP.md).
 
 Version 3.6 adds managed Neon login and optional free Cloudflare Quick Tunnels. Create/sign in to the same account on Desktop and Android, enable external access on Desktop, then select the PC on Android. No purchased domain or manual token copying is required. Public service URLs are shipped in `core-bridge/src/main/assets/punk-account.json`; all private state stays under ignored `runtime/`. [Account setup, privacy and free-tier limits](../docs/CONTA-PUNK.md).

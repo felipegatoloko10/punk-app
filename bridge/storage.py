@@ -36,6 +36,9 @@ class Store:
         CREATE TABLE IF NOT EXISTS messages(device TEXT,conversation TEXT,id TEXT,role TEXT,text TEXT,status TEXT,created REAL,PRIMARY KEY(device,id));
         CREATE TABLE IF NOT EXISTS requests(device TEXT,id TEXT,conversation TEXT,run_id TEXT,status TEXT,last_seq INTEGER DEFAULT -1,PRIMARY KEY(device,id));
         CREATE TABLE IF NOT EXISTS calls(id TEXT PRIMARY KEY,device TEXT,tool TEXT,status TEXT,result TEXT,params_hash TEXT);
+        CREATE TABLE IF NOT EXISTS call_meta(id TEXT PRIMARY KEY,client TEXT,conversation TEXT,created REAL,updated REAL);
+        CREATE TABLE IF NOT EXISTS integrations(id TEXT PRIMARY KEY,name TEXT,token_hash TEXT UNIQUE,devices TEXT,read_only INTEGER,revoked INTEGER DEFAULT 0,created REAL);
+        CREATE TABLE IF NOT EXISTS audit(seq INTEGER PRIMARY KEY AUTOINCREMENT,ts REAL,actor TEXT,action TEXT,target TEXT,status TEXT);
         CREATE TABLE IF NOT EXISTS uploads(id TEXT PRIMARY KEY,device TEXT,name TEXT,mime TEXT,size INTEGER,sha256 TEXT,offset INTEGER DEFAULT 0,complete INTEGER DEFAULT 0);
         CREATE INDEX IF NOT EXISTS events_device_seq ON events(device,seq);
         CREATE INDEX IF NOT EXISTS messages_conversation ON messages(device,conversation,created);
@@ -52,6 +55,11 @@ class Store:
     def get(self, key, default=None):
         row = self.db.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()
         return json.loads(row[0]) if row else default
+
+    def audit(self, actor, action, target, status):
+        # Never store parameters, prompts, results or credentials in the management audit.
+        self.execute('INSERT INTO audit(ts,actor,action,target,status) VALUES (?,?,?,?,?)',
+                     (time.time(), actor, action, target, status))
 
     def set(self, key, value):
         self.execute('INSERT OR REPLACE INTO settings VALUES (?,?)', (key, json.dumps(value)))

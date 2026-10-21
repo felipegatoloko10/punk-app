@@ -18,7 +18,8 @@ class BridgeClient(
     private val onState: (BridgeState) -> Unit,
     private val onMessage: (BridgeMessage) -> Unit,
     private val toolExecutor: (suspend (tool: String, params: JsonObject, callId: String) -> ToolResult)? = null,
-    private val catalog: JsonArray = JsonArray(emptyList())
+    private val catalog: JsonArray = JsonArray(emptyList()),
+    private val capabilities: () -> JsonObject = { JsonObject(emptyMap()) }
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private var ws: WebSocket? = null
@@ -72,9 +73,10 @@ class BridgeClient(
         override fun onOpen(webSocket: WebSocket, response: Response) {
             if (closed) { webSocket.close(1000, "Encerrado"); return }
             send(BridgeTypes.HELLO, buildJsonObject {
-                put("client", "punk-android"); put("version", "3.5.0"); put("protocolVersion", 3)
+                put("client", "punk-android"); put("version", "3.7.0"); put("protocolVersion", 3)
                 put("deviceModel", Build.MODEL); put("androidVersion", Build.VERSION.RELEASE)
                 put("deviceId", config.deviceId); put("lastSeq", BridgePrefs.lastSeq(context)); put("tools", catalog)
+                put("capabilities", capabilities())
             })
             handshakeJob = scope.launch { delay(10_000); if (!authenticated) { onState(BridgeState.Failed("O PC não confirmou o pareamento")); webSocket.cancel() } }
         }
@@ -90,7 +92,7 @@ class BridgeClient(
                 statusJob = scope.launch {
                     while (isActive && authenticated && !closed) {
                         delay(10_000)
-                        send("status_request")
+                        send("status_request", buildJsonObject { put("capabilities", capabilities()) })
                     }
                 }
                 onState(BridgeState.Connected); onMessage(msg); return
@@ -139,6 +141,11 @@ class BridgeClient(
             statusJob?.cancel()
             if (closed) return
             cancelTools(acknowledge=false); BridgeService.stopLocalTools?.invoke()
+            if (code == 4003) {
+                closed = true
+                onState(BridgeState.Failed("Acesso revogado no PC. Autorize um novo pareamento para conectar."))
+                return
+            }
             onState(BridgeState.Disconnected); scheduleReconnect()
         }
     }

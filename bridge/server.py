@@ -22,10 +22,12 @@ try:
     from .storage import Store, uid
     from .account import PcAccount, AccountError
     from .tunnel import QuickTunnel
+    from .control import Control
 except ImportError:
     from storage import Store, uid
     from account import PcAccount, AccountError
     from tunnel import QuickTunnel
+    from control import Control
 
 PHONE_WRAPPERS = ('jarvis_', 'punk_device_')
 # General shell, arbitrary code, browser navigation/evaluation and unknown tools
@@ -124,7 +126,7 @@ async def errors(request, handler):
         return web.json_response({'ok': False, 'error': 'Internal bridge error'}, status=500)
 
 
-class Bridge:
+class Bridge(Control):
     def __init__(self, config, store):
         self.config, self.store = config, store
         self.sockets, self.catalogs, self.pending_calls = {}, {}, {}
@@ -144,6 +146,7 @@ class Bridge:
         self.account_wake = asyncio.Event()
         self.account_route_key = None
         self.last_account_publish = 0
+        self.init_control()
         if config.get('_runtimePath'):
             try:
                 self.account = PcAccount(config['_runtimePath'])
@@ -174,6 +177,9 @@ class Bridge:
         if self.account and self.account.tunnel:
             await self.account.tunnel.stop()
         self.release_waiters()
+        for task in list(self.call_tasks.values()):
+            task.cancel()
+        await asyncio.gather(*list(self.call_tasks.values()), return_exceptions=True)
         for task in list(self.run_tasks.values()):
             task.cancel()
         await asyncio.gather(*list(self.run_tasks.values()), return_exceptions=True)
@@ -189,7 +195,7 @@ class Bridge:
                 entry['future'].set_result(False)
         for entry in list(self.pending_calls.values()):
             if not entry['future'].done():
-                entry['future'].set_result({'ok': False, 'error': 'Bridge shutting down; outcome unknown'})
+                entry['future'].set_result({'ok': False, 'outcomeUnknown': True, 'error': 'Bridge shutting down; outcome unknown'})
 
     def public_app(self):
         @web.middleware
@@ -217,8 +223,12 @@ class Bridge:
     def internal_app(self):
         @web.middleware
         async def auth(request, handler):
-            if not hmac.compare_digest(bearer(request), self.config['internalToken']):
-                raise web.HTTPUnauthorized()
+            token = bearer(request)
+            if not hmac.compare_digest(token, self.config['internalToken']):
+                client = self.integration_auth(token) if request.path.startswith('/api/mcp/') else None
+                if not client:
+                    raise web.HTTPUnauthorized()
+                request['integration'] = client
             return await handler(request)
         app = web.Application(middlewares=[errors, auth], client_max_size=1100000)
         app.router.add_get('/api/status', self.status)
@@ -230,6 +240,7 @@ class Bridge:
         app.router.add_post('/api/policy/check', self.policy_check)
         app.router.add_post('/api/files/publish', self.publish_file)
         app.router.add_get('/api/device-events', self.internal_device_events)
+        self.control_routes(app)
         return app
 
     async def account_status(self, request):
@@ -439,6 +450,9 @@ class Bridge:
             self.voice_sessions.pop(device, None)
             tools = payload.get('tools', [])
             self.catalogs[device] = {x['name'] for x in tools if isinstance(x, dict) and isinstance(x.get('name'), str)}
+            self.tool_schemas[device] = {x['name']: x for x in tools if isinstance(x, dict) and isinstance(x.get('name'), str)}
+            if isinstance(payload.get('capabilities'), dict):
+                self.capabilities[device] = payload['capabilities']
             await ws.send_json({'id': hello.get('id', uid()), 'type': 'hello_ack', 'payload': {'protocolVersion': 3, 'deviceId': device, 'authenticated': True, 'supervised': self.supervised, 'health': await self.health(), 'lastSeq': self.store.last_seq(device)}})
             for event in self.store.events(device, max(0, int(payload.get('lastSeq', 0)))):
                 await ws.send_json(event)
@@ -456,10 +470,12 @@ class Bridge:
             if self.sockets.get(device) is ws:
                 self.sockets.pop(device, None)
                 self.catalogs.pop(device, None)
+                self.tool_schemas.pop(device, None)
+                self.capabilities.pop(device, None)
                 self.voice_sessions.pop(device, None)
                 for call_id, entry in list(self.pending_calls.items()):
                     if entry['device'] == device and not entry['future'].done():
-                        entry['future'].set_result({'ok': False, 'error': 'Phone disconnected'})
+                        entry['future'].set_result({'ok': False, 'outcomeUnknown': True, 'error': 'Phone disconnected; outcome unknown'})
         return ws
 
     async def handle_frame(self, device, frame):
@@ -469,6 +485,8 @@ class Bridge:
         if kind in ('ping', 'heartbeat'):
             await self.send(device, 'pong', {})
         elif kind == 'status_request':
+            if isinstance(p.get('capabilities'), dict):
+                self.capabilities[device] = p['capabilities']
             await self.send(device, 'health_update', {'health': await self.health()})
         elif kind == 'chat':
             if self.switching:
@@ -488,14 +506,16 @@ class Bridge:
         elif kind == 'tool_result':
             call_id = str(p.get('callId', ''))
             entry = self.pending_calls.get(call_id)
-            if entry and entry['device'] == device and not entry['future'].done():
+            row = self.store.db.execute('SELECT device,status FROM calls WHERE id=?', (call_id,)).fetchone()
+            if row and row['device'] == device and row['status'] not in ('completed', 'failed', 'cancelled'):
                 result = {'callId': call_id, 'ok': p.get('ok') is True, 'result': p.get('result'), 'error': p.get('error')}
                 if isinstance(result['result'], dict):
                     nested = result['result']
                     if nested.get('ok') is False or nested.get('error') or nested.get('exitCode', 0) != 0:
                         result['ok'] = False
-                self.store.execute('UPDATE calls SET status=?,result=? WHERE id=?', ('completed' if result['ok'] else 'failed', json.dumps(result), call_id))
-                entry['future'].set_result(result)
+                self.call_state(call_id, 'completed' if result['ok'] else 'failed', result)
+                if entry and entry['device'] == device and not entry['future'].done():
+                    entry['future'].set_result(result)
         elif kind == 'approval_response':
             entry = self.pending_approvals.get(p.get('id'))
             if entry and entry['device'] == device and not entry['future'].done():
@@ -538,6 +558,7 @@ class Bridge:
                 'sessionId': session_id,
                 'conversationId': conversation,
                 'partial': str(p.get('text', ''))[:2000],
+                'phase': 'listening',
                 'wakePhraseArmed': p.get('wakePhraseArmed') is True,
                 'updatedAt': int(p.get('timestamp', int(time.time() * 1000)))
             }
@@ -678,6 +699,10 @@ class Bridge:
         self.run_tasks.pop((device, mid), None)
 
     async def cancel(self, device, cid=None):
+        queued = self.store.db.execute('''SELECT c.id FROM calls c LEFT JOIN call_meta m ON m.id=c.id
+            WHERE c.device=? AND c.status='queued' AND (? IS NULL OR m.conversation=?)''', (device, cid, cid)).fetchall()
+        for row in queued:
+            await self.cancel_call(row['id'])
         for entry in self.pending_approvals.values():
             if entry['device'] == device and not entry['future'].done():
                 entry['future'].set_result(False)
@@ -772,31 +797,14 @@ class Bridge:
     async def internal_tool(self, request):
         body = await request.json()
         device = self.choose_device(body)
-        tool, params = body.get('tool'), body.get('params', {})
-        if tool not in self.catalogs.get(device, set()) or not isinstance(params, dict):
-            raise web.HTTPBadRequest(reason='Tool not advertised by device')
-        call_id = checked_id(body.get('callId') or uid())
-        params_hash = hashlib.sha256(json.dumps(params, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-        existing = self.store.db.execute('SELECT * FROM calls WHERE id=?', (call_id,)).fetchone()
-        if existing:
-            if existing['device'] != device or existing['tool'] != tool or existing['params_hash'] != params_hash:
-                raise web.HTTPConflict()
-            if existing['result']:
-                result = json.loads(existing['result'])
-                return web.json_response({'ok': result['ok'], 'callId': call_id, 'data': result})
-            raise web.HTTPConflict(reason='Call already in progress; never replayed')
-        self.store.execute('INSERT INTO calls VALUES (?,?,?,?,NULL,?)', (call_id, device, tool, 'running', params_hash))
-        future = asyncio.get_running_loop().create_future()
-        self.pending_calls[call_id] = {'device': device, 'future': future, 'conversation': body.get('conversationId')}
+        call_id = self.admit_call(device, body)
+        task = self.call_tasks.get(call_id)
         try:
-            await self.send(device, 'tool_call', {'callId': call_id, 'tool': tool, 'params': params, 'supervised': self.supervised, 'conversationId': body.get('conversationId')})
-            result = await asyncio.wait_for(future, min(300, max(1, float(body.get('timeout', 30)))))
-            return web.json_response({'ok': result.get('ok') is True, 'callId': call_id, 'data': result})
+            if task:
+                await asyncio.wait_for(asyncio.shield(task), min(300, max(1, float(body.get('timeout', 30)))) + .1)
         except asyncio.TimeoutError:
-            self.store.execute("UPDATE calls SET status='timeout' WHERE id=?", (call_id,))
-            return web.json_response({'ok': False, 'callId': call_id, 'error': 'Phone result timed out; outcome unknown'}, status=504)
-        finally:
-            self.pending_calls.pop(call_id, None)
+            return web.json_response(self.call_view(call_id), status=504)
+        return web.json_response(self.call_view(call_id))
 
     async def internal_chat(self, request):
         body = await request.json(); device = self.choose_device(body)

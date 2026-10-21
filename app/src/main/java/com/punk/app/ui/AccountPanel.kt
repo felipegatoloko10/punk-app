@@ -30,6 +30,7 @@ fun AccountPanel(onConnect:(String,Int,String)->Unit) {
     var message by remember { mutableStateOf("") }
     var computers by remember { mutableStateOf(JsonArray(emptyList())) }
     val bridgeState by BridgeService.state.collectAsState()
+    val health by BridgeService.health.collectAsState()
     val connection by BridgePrefs.config.collectAsState()
     suspend fun connectPc(id:String) {
         busy=true;message="Localizando seu PC pela Internet…"
@@ -73,6 +74,12 @@ fun AccountPanel(onConnect:(String,Int,String)->Unit) {
                 is BridgeState.Connecting -> "Conta conectada · conectando ao PC…"
                 else -> "Conta conectada · PC desconectado"
             },style=MaterialTheme.typography.bodySmall,color=PunkNeonCyan)
+            Text(when {
+                bridgeState !is BridgeState.Connected -> "Hermes · não verificado enquanto o PC está desconectado"
+                health["hermes"]?.jsonPrimitive?.booleanOrNull == true && health["policy"]?.jsonPrimitive?.booleanOrNull == true -> "Hermes · pronto para conversar e executar"
+                health["hermes"]?.jsonPrimitive?.booleanOrNull == true -> "Hermes · API disponível, política de execução pendente"
+                else -> "Hermes · indisponível no PC"
+            },style=MaterialTheme.typography.bodySmall,color=PunkTextSecondary)
             if(computers.isEmpty())Text("Nenhum PC cadastrado. Entre nesta conta no Punk Desktop.",color=PunkTextSecondary)
             for(item in computers) {
                 val pc=item.jsonObject

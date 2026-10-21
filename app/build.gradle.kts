@@ -12,8 +12,8 @@ android {
         applicationId = "com.punk.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 33
-        versionName = "3.6.1"
+        versionCode = 34
+        versionName = "3.7.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
