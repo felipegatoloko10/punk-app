@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 object CloudflareDns {
     private val doh by lazy {
         DnsOverHttps.Builder().client(OkHttpClient.Builder().callTimeout(6,TimeUnit.SECONDS).build())
-            .url("https://cloudflare-dns.com/dns-query".toHttpUrl()).includeIPv6(false).build()
+            .url("https://cloudflare-dns.com/dns-query".toHttpUrl()).includeIPv6(true).build()
     }
     val resolver:Dns by lazy { fallback(Dns.SYSTEM,doh) }
     fun fallback(primary:Dns,secondary:Dns):Dns = object : Dns {

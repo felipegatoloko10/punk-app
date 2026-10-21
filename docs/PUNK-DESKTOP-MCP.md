@@ -5,6 +5,7 @@
 - **Implementado em 3.5.2:** painel local Windows, aberto com duplo clique em `ABRIR-PUNK.vbs`, com estado do PC/celular/Hermes/ADB e botões para conectar e gerar o QR. Usa a instalação Hermes já provisionada e mantém o bridge em execução ao fechar a janela.
 - **Implementado em 3.5.2:** Live por turnos com captura suspensa durante o TTS e intervalo de 900 ms após o término/interrupção. A interrupção é manual; o detector baseado apenas em volume foi retirado do fluxo ativo.
 - **Implementado em 3.6.0:** Conta Punk com Neon Auth, sessões cifradas, descoberta por proprietário, vínculo persistente e túnel Cloudflare gratuito opcional. Endereço externo renovado automaticamente sem domínio comprado. Veja [uso e limites](CONTA-PUNK.md).
+- **Corrigido em 3.6.1:** túnel ativado por padrão e preferência restaurada, conexão automática para conta com um PC, migração do QR local pela identidade do PC, QR com rota externa e separação dos estados de conta e bridge. Teste físico em 4G com este APK ainda pendente.
 - **Projeto abaixo, ainda não implementado:** servidor MCP, instalador autossuficiente, descoberta mDNS, credenciais individuais de clientes MCP e configuração visual desses clientes. A descoberta pela Conta Punk já existe.
 
 ## Experiência desejada

@@ -6,6 +6,10 @@ import java.net.InetAddress
 import java.net.UnknownHostException
 
 class CloudflareDnsTest {
+    @Test fun fallbackKeepsPublicIpv6ForMobileNetworks() {
+        val expected=listOf(InetAddress.getByName("2606:4700:4700::1111"))
+        assertEquals(expected,CloudflareDns.fallback(dns { throw UnknownHostException() },dns { expected }).lookup("example.trycloudflare.com"))
+    }
     private fun dns(block:(String)->List<InetAddress>):Dns = object:Dns { override fun lookup(hostname:String)=block(hostname) }
     @Test fun prefersSystemDns() {
         val expected=listOf(InetAddress.getByName("104.16.230.132"))

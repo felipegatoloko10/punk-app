@@ -141,6 +141,7 @@ class Bridge:
         self.switching = False
         self.account = None
         self.account_task = None
+        self.account_wake = asyncio.Event()
         self.account_route_key = None
         self.last_account_publish = 0
         if config.get('_runtimePath'):
@@ -266,6 +267,7 @@ class Bridge:
                 raise web.HTTPNotFound()
         except AccountError as error:
             return web.json_response({'error': str(error)}, status=400)
+        self.account_wake.set()
         return web.json_response(account.status())
 
     async def account_register(self):
@@ -309,7 +311,11 @@ class Bridge:
                     raise
                 except Exception:
                     account.error = 'Não foi possível atualizar a conexão externa. Tentaremos novamente.'
-            await asyncio.sleep(30)
+            try:
+                await asyncio.wait_for(self.account_wake.wait(),30)
+            except asyncio.TimeoutError:
+                pass
+            self.account_wake.clear()
 
     async def account_connect(self, request):
         # Cloudflare proxies requests from loopback; use a bounded global window as well as per-IP pairing limits.

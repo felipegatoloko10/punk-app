@@ -1,14 +1,16 @@
-# Conta Punk · 3.6.0
+# Conta Punk · 3.6.1
 
 ## Usar sem terminal e sem comprar domínio
 
 1. Atualize este repositório no PC já provisionado e abra `ABRIR-PUNK.vbs`.
 2. Em **Conta Punk**, informe seu e-mail e uma senha própria e escolha **Criar conta** uma única vez. Depois, use **Entrar**. Não envie sua senha ao agente de programação.
-3. Toque **Ativar acesso externo gratuito**. Na primeira vez, o Desktop baixa o `cloudflared` oficial, confere o SHA-256 publicado e prepara o túnel. Aguarde a indicação de conexão.
-4. Instale o APK 3.6.0 no Android, sem remover a versão anterior. Abra **Configurações → Conta Punk** e entre na mesma conta.
-5. Toque **Conectar · nome do PC**. O app tenta a rota local com certificado fixado e, se necessário, a rota externa com certificado público. O PC deve estar ligado, com o bridge e o Hermes disponíveis.
+3. O acesso externo fica **ativado por padrão e salvo** após o login. Na primeira vez, o Desktop baixa o `cloudflared` oficial, confere o SHA-256 publicado e prepara o túnel. Aguarde a indicação de conexão. Uma desativação explícita continua sendo respeitada; você pode reativar pelo botão.
+4. Instale o APK 3.6.1 no Android, sem remover a versão anterior. Abra **Configurações → Conta Punk** e entre na mesma conta.
+5. Se houver só um PC e o app estiver desconectado, ele tenta conectar automaticamente. Se houver vários, toque **Conectar · nome do PC**. A rota externa publicada é tentada primeiro, inclusive no 4G, seguida da rota local com certificado fixado. O PC deve estar ligado, com o bridge e o Hermes disponíveis.
 
 O QR continua funcionando sem depender da conta. Se o celular já estava pareado por QR, use o mesmo PC na conta para conservar a identidade do dispositivo no bridge.
+
+Gere um **novo QR no Desktop atualizado** para incluir a rota externa. QRs antigos contendo apenas `192.168.x.x` não tornam esse endereço acessível pelo 4G. O novo QR tenta Internet, rede local e VPN preservando a porta e a identidade TLS de cada rota. Se a conta do celular reconhecer o PC do QR, a reconexão passa a acompanhar as mudanças de endereço pela conta; sem login, um túnel reiniciado pode exigir outro QR. Falhas de pareamento não apagam uma conexão já salva.
 
 ## O que acontece automaticamente
 
@@ -18,6 +20,7 @@ O QR continua funcionando sem depender da conta. Se o celular já estava pareado
 - O celular pede um convite aleatório de uso único, restrito ao PC/conta/instalação, válido por 90 segundos. O JWT da conta nunca é enviado ao túnel do PC.
 - O PC troca o convite por uma credencial de aparelho estável. Repetir a conexão não cria outro histórico. Revogação existente não é revertida automaticamente.
 - O bridge monitora o processo do túnel e publica mudanças do endereço/IP. O app consulta novamente a conta durante reconexão ou mudança de rede.
+- Abrir o Desktop já provisionado inicia o bridge sem precisar tocar novamente em **Conectar ao PC**. A preferência externa é restaurada pelo bridge; isso não configura inicialização com o Windows nem mantém um PC desligado/suspenso disponível.
 - Não há heartbeat SQL de 30 em 30 segundos: publicação só quando a rota muda ou a cada 30 minutos. A disponibilidade é confirmada pelo bridge real, não pelo horário de cadastro. Isso permite suspensão do banco gratuito.
 - Fechar a janela Desktop não encerra o bridge nem um túnel ativado. **Desativar acesso externo** encerra o túnel. **Sair** encerra a sessão local e o túnel, mas não é uma revogação de todos os aparelhos já pareados.
 

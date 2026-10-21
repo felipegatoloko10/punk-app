@@ -12,6 +12,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.punk.bridge.PunkAccount
 import com.punk.bridge.BridgeService
+import com.punk.bridge.BridgePrefs
+import com.punk.bridge.BridgeState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -27,10 +29,22 @@ fun AccountPanel(onConnect:(String,Int,String)->Unit) {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var computers by remember { mutableStateOf(JsonArray(emptyList())) }
-    suspend fun refresh() { computers=PunkAccount.computers(ctx) }
+    val bridgeState by BridgeService.state.collectAsState()
+    val connection by BridgePrefs.config.collectAsState()
+    suspend fun connectPc(id:String) {
+        busy=true;message="Localizando seu PC pela Internet…"
+        try { val c=PunkAccount.connect(ctx,id);onConnect(c.host,c.port,c.token);message="Conexão autorizada. Aguardando confirmação do PC…" }
+        catch(e:Exception) { message=e.message ?: "Não foi possível conectar" }
+        finally { busy=false }
+    }
+    suspend fun refresh(autoConnect:Boolean=false) {
+        computers=PunkAccount.computers(ctx)
+        if(autoConnect && computers.size==1 && BridgeService.state.value !is BridgeState.Connected)
+            connectPc(computers[0].jsonObject.getValue("id").jsonPrimitive.content)
+    }
     LaunchedEffect(Unit) {
         signedEmail=withContext(Dispatchers.IO) { PunkAccount.email(ctx) }
-        if(signedEmail.isNotEmpty())runCatching { refresh() }.onFailure { message="Não foi possível atualizar os computadores. Tente novamente." }
+        if(signedEmail.isNotEmpty())runCatching { refresh(true) }.onFailure { message="Não foi possível atualizar os computadores. Tente novamente." }
     }
     PunkPanel {
         Text("Conta Punk",style=MaterialTheme.typography.titleLarge)
@@ -45,7 +59,7 @@ fun AccountPanel(onConnect:(String,Int,String)->Unit) {
                     OutlinedButton(enabled=!busy,onClick={
                         val secret=password;password="";busy=true;message=""
                         scope.launch {
-                            try { PunkAccount.login(ctx,email,secret,signup);signedEmail=email.trim();refresh() }
+                            try { PunkAccount.login(ctx,email,secret,signup);signedEmail=email.trim();refresh(true) }
                             catch(e:Exception) { message=e.message ?: "Não foi possível entrar" }
                             finally { busy=false }
                         }
@@ -54,20 +68,20 @@ fun AccountPanel(onConnect:(String,Int,String)->Unit) {
             }
         } else {
             Text(signedEmail,style=MaterialTheme.typography.titleSmall)
+            Text(when(bridgeState) {
+                is BridgeState.Connected -> "PC conectado · "+if(connection.trustMode=="cloudflare")"Internet" else "Rede local/VPN"
+                is BridgeState.Connecting -> "Conta conectada · conectando ao PC…"
+                else -> "Conta conectada · PC desconectado"
+            },style=MaterialTheme.typography.bodySmall,color=PunkNeonCyan)
             if(computers.isEmpty())Text("Nenhum PC cadastrado. Entre nesta conta no Punk Desktop.",color=PunkTextSecondary)
             for(item in computers) {
                 val pc=item.jsonObject
                 OutlinedButton(enabled=!busy,modifier=Modifier.fillMaxWidth(),onClick={
-                    busy=true;message="Localizando o computador…"
-                    scope.launch {
-                        try { val c=PunkAccount.connect(ctx,pc.getValue("id").jsonPrimitive.content);onConnect(c.host,c.port,c.token);message="Conectando ao seu PC…" }
-                        catch(e:Exception) { message=e.message ?: "Não foi possível conectar" }
-                        finally { busy=false }
-                    }
+                    scope.launch { connectPc(pc.getValue("id").jsonPrimitive.content) }
                 }) { Text("Conectar · "+pc.getValue("name").jsonPrimitive.content) }
             }
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                TextButton(enabled=!busy,onClick={scope.launch { busy=true;try { refresh();message="Lista atualizada" }catch(_:Exception){message="Não foi possível atualizar"}finally{busy=false} }}) { Text("Atualizar PCs") }
+                TextButton(enabled=!busy,onClick={scope.launch { busy=true;try { refresh(true) }catch(_:Exception){message="Não foi possível atualizar"}finally{busy=false} }}) { Text("Atualizar e conectar") }
                 TextButton(enabled=!busy,onClick={scope.launch {
                     busy=true
                     ctx.startService(Intent(ctx,BridgeService::class.java).setAction(BridgeService.ACTION_STOP))

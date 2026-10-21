@@ -1,16 +1,16 @@
-# Punk · 3.6.0
+# Punk · 3.6.1
 
 **Seu agente no computador e no Android, em uma única conversa.**
 
-[Baixar APK](apk/Punk-3.6.0.apk) · [Conta e acesso externo](docs/CONTA-PUNK.md) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.6.0-validation.json) · [Desktop e MCP](docs/PUNK-DESKTOP-MCP.md) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
+[Baixar APK](apk/Punk-3.6.1.apk) · [Conta e acesso externo](docs/CONTA-PUNK.md) · [Configurar o bridge](bridge/README.md) · [Protocolo](bridge/PROTOCOL.md) · [Validação da versão](apk/Punk-3.6.1-validation.json) · [Desktop e MCP](docs/PUNK-DESKTOP-MCP.md) · [Roadmap](docs/ROADMAP-HERMES-MOBILE.md)
 
 Aplicativo Android nativo para conversar com o seu Punk e usar as ferramentas do Hermes no computador e no celular. Interface em português, com fundo grafite, destaque ciano e três áreas: **Conversa**, **Dispositivos** e **Atividade**.
 
 ## Instalar no celular
 
-O APK está em [`apk/Punk-3.6.0.apk`](apk/Punk-3.6.0.apk), versão 3.6.0, código 32, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
+O APK está em [`apk/Punk-3.6.1.apk`](apk/Punk-3.6.1.apk), versão 3.6.1, código 33, pacote `com.punk.app`. A compilação de distribuição tem depuração desativada e usa a mesma assinatura das versões 3.x, permitindo atualização direta sem remover o app. A migração Room 1 → 2 mantém conversas e atividades existentes.
 
-Novo: **Conta Punk com e-mail e senha**, sessão salva no cofre do Windows/Android e descoberta do PC. No Desktop, crie a conta e toque **Ativar acesso externo gratuito**. No Android, entre na mesma conta e escolha o PC. Não é necessário comprar domínio nem copiar tokens. [Instruções e limites](docs/CONTA-PUNK.md).
+Novo em 3.6.1: **acesso externo automático e salvo**, conexão pela Internet antes da rota local, QR com rota externa e fallback local/VPN, DNS IPv4/IPv6 e indicação separada de conta/PC conectado. No Desktop, entre na conta; o túnel é ativado por padrão, respeitando uma desativação explícita. No Android, entre na mesma conta; se houver apenas um PC, o app tenta conectar automaticamente. Não é necessário comprar domínio nem copiar tokens. [Instruções e limites](docs/CONTA-PUNK.md).
 
 1. Copie o APK para o S23 Ultra e instale.
 2. No PC já configurado, abra **ABRIR-PUNK.vbs** com duplo clique: o painel Punk Desktop mostra a conexão e oferece **Conectar ao PC**.
@@ -72,7 +72,7 @@ O controle é limitado às permissões concedidas pelo Android, acessibilidade e
 
 O modo Live usa STT/TTS do Android e continua sendo conversação por turnos: a instalação atual do Hermes não expõe transporte Realtime de áudio. Durante a fala, use o botão para interromper; a interrupção automática por voz não está ativa nesta versão. A wake phrase é reconhecida por software durante a escuta Live, não durante o TTS nem por DSP de baixíssimo consumo. Entrega de SMS/WhatsApp não é apresentada como confirmada sem verificação do aplicativo de destino. A parada não desfaz ações já concluídas; um gesto despachado pode levar até dois segundos para terminar.
 
-Validação 3.6.0: **47 testes Android/JVM**, testes Python e testes da API de contas; consulte o [relatório da versão](apk/Punk-3.6.0-validation.json) para contagens e verificações. Login, restauração DPAPI, renovação, isolamento entre dois usuários e consumo único foram exercitados contra o Neon real. Um servidor isolado confirmou HTTPS e WebSocket autenticado pelo túnel gratuito, com TLS da origem verificado. Não foram usados a conta pessoal ou o Hermes real nesses testes de nuvem. O APK 3.6.0 ainda requer validação de login/rede no telefone físico; nenhum aparelho apareceu no ADB ao finalizar a compilação. O teste acústico Live também permanece pendente. O painel Desktop requer o PC previamente provisionado.
+Validação 3.6.1: consulte o [relatório da versão](apk/Punk-3.6.1-validation.json) para contagens e verificações. O cliente OkHttp do app acessou a rota pública real e confirmou a exigência de autenticação. As suítes cobrem ordem das rotas, separação de portas/certificados, compatibilidade com QR antigo e novo, IPv6, persistência do acesso externo e mensagens de erro sem segredos. A instalação anterior já verificou login real, restauração DPAPI, renovação, isolamento entre usuários e WebSocket por túnel isolado. Ainda é necessário repetir o teste no 4G do telefone físico com o novo APK; não havia aparelho no ADB. O teste acústico Live também permanece pendente. O painel Desktop requer o PC previamente provisionado.
 
 O Shizuku foi verificado no aparelho em execução via ADB wireless, autorizado e operando como UID 2000 (`shell`). Isso não significa que o Windows tenha enumerado o telefone: o cartão **ADB com o PC** continua sendo um diagnóstico separado e pode permanecer desconectado sem impedir as ferramentas locais via Shizuku.
 

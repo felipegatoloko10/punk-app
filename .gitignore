@@ -29,3 +29,4 @@ captures
 /cloud/.env*
 /build-account.log
 /build-account-final.log
+/build-routing.log

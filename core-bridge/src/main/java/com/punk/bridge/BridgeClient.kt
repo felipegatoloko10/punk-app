@@ -148,12 +148,21 @@ class BridgeClient(
         val backoff = min(config.reconnectMaxMs, config.reconnectBaseMs * (1L shl min(attempt, 10)))
         reconnectJob = scope.launch {
             delay(backoff + (0..500).random())
-            if(config.accountComputerId.isNotEmpty()) {
-                val updated=runCatching { PunkAccount.connect(context,config.accountComputerId) }.getOrNull()
+            val target=runCatching { PunkAccount.reconnectTarget(context,config) }.getOrDefault("")
+            if(target.isNotEmpty()) {
+                val updated=runCatching { PunkAccount.connect(context,target) }.getOrNull()
                 if(closed)return@launch
                 if(updated!=null && updated!=config) {
                     client.connectionPool.evictAll();client.dispatcher.executorService.shutdown()
                     config=updated
+                    client=BridgeHttp.client(config).newBuilder().pingInterval(20,TimeUnit.SECONDS).readTimeout(0,TimeUnit.SECONDS).build()
+                }
+            } else if(BridgePrefs.autoFailover(context)) {
+                val updated=ConnectionRoutes.reachable(BridgePrefs.pairRoutes(context,config))
+                if(closed)return@launch
+                if(updated!=null && updated!=config) {
+                    client.connectionPool.evictAll();client.dispatcher.executorService.shutdown()
+                    config=updated;BridgePrefs.save(context,updated)
                     client=BridgeHttp.client(config).newBuilder().pingInterval(20,TimeUnit.SECONDS).readTimeout(0,TimeUnit.SECONDS).build()
                 }
             }

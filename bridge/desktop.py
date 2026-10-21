@@ -151,6 +151,10 @@ class Desktop:
         root.protocol('WM_DELETE_WINDOW', self.close)
         root.after(100, self.pump)
         self.refresh()
+        # Opening the Desktop restores the provisioned PC/remembered tunnel without another button press.
+        runtime=getattr(self.connection,'runtime',None)
+        if runtime and (runtime / 'config.json').is_file():
+            root.after(250,lambda:self.run(False))
 
     def account_action(self, action):
         if self.busy:

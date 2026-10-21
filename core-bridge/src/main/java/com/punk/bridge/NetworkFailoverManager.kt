@@ -19,12 +19,15 @@ object NetworkFailoverManager {
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 val managed=BridgePrefs.load(ctx).accountComputerId
-                if(managed.isNotEmpty()) {
+                if(managed.isNotEmpty() || PunkAccount.email(ctx).isNotEmpty()) {
                     job?.cancel()
                     job=scope.launch(Dispatchers.IO) {
                         delay(1500)
                         val current=BridgePrefs.load(ctx)
-                        val config=runCatching { PunkAccount.connect(ctx,managed) }.getOrNull() ?: return@launch
+                        val target=runCatching { PunkAccount.reconnectTarget(ctx,current) }.getOrDefault("")
+                        val config=if(target.isNotEmpty())runCatching { PunkAccount.connect(ctx,target) }.getOrNull()
+                            else ConnectionRoutes.reachable(BridgePrefs.pairRoutes(ctx,current))
+                        if(config==null)return@launch
                         if(config!=current || BridgeService.state.value !is BridgeState.Connected)
                             ctx.startForegroundService(Intent(ctx,BridgeService::class.java).setAction(BridgeService.ACTION_START))
                     }
@@ -36,19 +39,15 @@ object NetworkFailoverManager {
                     delay(1500)
                     val current = BridgePrefs.load(ctx)
                     if (current.token.isBlank() || !current.useTls) return@launch
-                    val candidates = listOf(current.host, BridgePrefs.tailscaleHost(ctx), BridgePrefs.localHost(ctx)).filter { it.isNotBlank() }.distinct()
-                    for (host in candidates) {
-                        val config = current.copy(host=host)
-                        val reachable = runCatching { BridgeHttp.client(config).useClient { http ->
-                            http.newCall(BridgeHttp.request(config,"/api/status").build()).execute().use { it.isSuccessful }
-                        } }.getOrDefault(false)
-                        if (reachable) {
-                            if(host != current.host || BridgeService.state.value !is BridgeState.Connected) {
+                    val saved=BridgePrefs.pairRoutes(ctx,current)
+                    val candidates=if(saved.size>1)saved else listOf(current.host,BridgePrefs.tailscaleHost(ctx),BridgePrefs.localHost(ctx))
+                        .filter { it.isNotBlank() }.distinct().map { current.copy(host=it) }
+                    val config=ConnectionRoutes.reachable(candidates)
+                    if(config!=null) {
+                            if(config != current || BridgeService.state.value !is BridgeState.Connected) {
                                 BridgePrefs.save(ctx,config)
                                 ctx.startForegroundService(Intent(ctx,BridgeService::class.java).setAction(BridgeService.ACTION_START))
                             }
-                            break
-                        }
                     }
                 }
             }

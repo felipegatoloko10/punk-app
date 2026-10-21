@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.*
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -84,5 +85,15 @@ object BridgePrefs {
     }
     fun saveFailoverSettings(ctx: Context, localHost: String, tailscaleHost: String, autoFailover: Boolean) {
         prefs(ctx).edit().putString("local_host", localHost).putString("tailscale_host", tailscaleHost).putBoolean("auto_failover", autoFailover).apply()
+    }
+    fun savePairRoutes(ctx:Context,routes:List<BridgeConfig>) {
+        val public=JsonArray(routes.map { Json.encodeToJsonElement(BridgeConfig.serializer(),it.copy(token="",deviceId="")) })
+        prefs(ctx).edit().putString("pair_routes",public.toString()).putString("pair_routes_device",deviceId(ctx)).apply()
+    }
+    fun pairRoutes(ctx:Context,current:BridgeConfig):List<BridgeConfig> {
+        if(prefs(ctx).getString("pair_routes_device",null)!=current.deviceId)return listOf(current)
+        return runCatching { Json.parseToJsonElement(prefs(ctx).getString("pair_routes","[]")!!).jsonArray.map {
+            Json.decodeFromJsonElement(BridgeConfig.serializer(),it).copy(token=current.token,deviceId=current.deviceId,accountComputerId=current.accountComputerId)
+        }.onEach(AccountRoutes::validateTls) }.getOrDefault(listOf(current))
     }
 }

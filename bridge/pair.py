@@ -7,10 +7,40 @@ import json
 import socket
 import sys
 import time
+import re
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 from server import certificate, load_config
 from storage import Store
+
+
+def account_route(config):
+    """Obtain the live URL from the private loopback API, not stale saved tunnel logs."""
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args, **kwargs): return None
+    try:
+        port=int(config.get('internalPort',18766))
+        if not 1 <= port <= 65535: return {}
+        request=urllib.request.Request(f'http://127.0.0.1:{port}/api/account',
+            headers={'Authorization':'Bearer '+config.get('internalToken','')})
+        opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+        with opener.open(request,timeout=3) as response:
+            account=json.load(response)
+        return account
+    except (OSError,ValueError,urllib.error.URLError):
+        return {}
+
+
+def pairing_payload(config,host,pin,code,account,tailscale=''):
+    payload={'version':3,'host':host,'port':config['port'],'useTls':True,'certificateFingerprint':pin,
+             'pairingCode':code,'localHost':host,'tailscaleHost':tailscale or config.get('tailscaleHost','')}
+    endpoint=account.get('remoteEndpoint','')
+    if account.get('remote') and re.fullmatch(r'https://[a-z0-9-]+\.trycloudflare\.com',endpoint):
+        payload['remoteEndpoint']=endpoint
+        payload['computerId']=account.get('computerId','')
+    return payload
 
 
 def local_address():
@@ -38,9 +68,7 @@ def main():
         code = store.pairing_code()
     finally:
         store.db.close()
-    payload = {'version': 3, 'host': host, 'port': config['port'], 'useTls': True,
-               'certificateFingerprint': pin, 'pairingCode': code,
-               'localHost': host, 'tailscaleHost': args.tailscale_host or config.get('tailscaleHost', '')}
+    payload = pairing_payload(config,host,pin,code,account_route(config),args.tailscale_host)
     text = json.dumps(payload, ensure_ascii=False)
     (root / 'pairing.json').write_text(text, encoding='utf-8')
     sys.path.insert(0, str(root / 'vendor'))

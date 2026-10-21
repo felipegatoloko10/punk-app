@@ -3,6 +3,7 @@ package com.punk.bridge
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.json.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -48,21 +49,34 @@ object BridgeHttp {
 object BridgePairing {
     suspend fun pair(ctx: Context, pairingJson: String): Result<Unit> = withContext(Dispatchers.IO) { runCatching {
         val data = Json.parseToJsonElement(pairingJson.trim()).jsonObject
-        require(data["version"]?.jsonPrimitive?.int == 3) { "Código de pareamento incompatível" }
-        val config = BridgeConfig(host = data.getValue("host").jsonPrimitive.content, port = data["port"]?.jsonPrimitive?.int ?: 8765,
-            useTls = true, certificateFingerprint = data.getValue("certificateFingerprint").jsonPrimitive.content)
-        require(config.host.matches(Regex("[A-Za-z0-9._:-]+"))) { "Endereço do PC inválido" }
+        val routes=ConnectionRoutes.pairing(data)
         val body = buildJsonObject { put("code", data.getValue("pairingCode").jsonPrimitive.content); put("deviceName", android.os.Build.MODEL) }
-        BridgeHttp.client(config).useClient { client ->
-            client.newCall(Request.Builder().url(config.httpUrl() + "/api/pair").post(BridgeHttp.jsonBody(body)).build()).execute().use { response ->
-                require(response.isSuccessful) { "Pareamento recusado ou expirado. Gere um novo código no PC." }
-                val result = Json.parseToJsonElement(response.body!!.string()).jsonObject
-                BridgePrefs.save(ctx, config.copy(deviceId = result.getValue("deviceId").jsonPrimitive.content, token = result.getValue("token").jsonPrimitive.content))
-                val local=data["localHost"]?.jsonPrimitive?.content ?: config.host
-                val tailscale=data["tailscaleHost"]?.jsonPrimitive?.content ?: ""
-                BridgePrefs.saveFailoverSettings(ctx,local,tailscale,tailscale.isNotBlank())
-            }
+        val failures=mutableListOf<String>()
+        var paired:BridgeConfig?=null
+        for(config in routes) {
+            paired=runCatching { BridgeHttp.client(config).newBuilder().callTimeout(if(config.trustMode=="cloudflare")25 else 4,TimeUnit.SECONDS).build().useClient { client ->
+                client.newCall(Request.Builder().url(config.httpUrl() + "/api/pair").post(BridgeHttp.jsonBody(body)).build()).execute().use { response ->
+                    require(response.isSuccessful) { "Pareamento recusado ou expirado (HTTP ${response.code}). Gere um novo QR no PC." }
+                    val result=Json.parseToJsonElement(response.body!!.string()).jsonObject
+                    config.copy(deviceId=result.getValue("deviceId").jsonPrimitive.content,token=result.getValue("token").jsonPrimitive.content)
+                }
+            } }.onFailure { failures.add(ConnectionRoutes.label(config)+": "+ConnectionRoutes.failure(it)) }.getOrNull()
+            if(paired!=null)break
         }
+        var connected=paired ?: error("Não foi possível parear. "+failures.joinToString("; ")+
+            if(data["remoteEndpoint"]==null)". Este QR não tem rota de Internet; gere outro com acesso externo ativo no Desktop." else "")
+        val computer=data["computerId"]?.jsonPrimitive?.content ?: ""
+        if(computer.isNotEmpty() && PunkAccount.email(ctx).isNotEmpty()) {
+            val owned=runCatching { PunkAccount.computers(ctx).any { it.jsonObject["id"]?.jsonPrimitive?.content==computer } }.getOrDefault(false)
+            if(owned)connected=connected.copy(accountComputerId=computer)
+        }
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        BridgePrefs.save(ctx,connected)
+        // Keep QR-only routes as complete configs: remote and LAN use different ports and trust identities.
+        BridgePrefs.savePairRoutes(ctx,routes)
+        val local=data["localHost"]?.jsonPrimitive?.content ?: data.getValue("host").jsonPrimitive.content
+        val tailscale=data["tailscaleHost"]?.jsonPrimitive?.content ?: ""
+        BridgePrefs.saveFailoverSettings(ctx,local,tailscale,routes.size>1)
     } }
 }
 

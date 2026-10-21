@@ -69,6 +69,9 @@ class PcAccount:
         self.public = public_config if public_config is not None else json.loads(path.read_text('utf-8'))
         self.secret = secret or WindowsSecret(self.runtime / 'account.dpapi')
         self.data = self.secret.load()
+        if self.data.get('cookies') and 'remote_enabled' not in self.data:
+            self.data['remote_enabled'] = True
+            self.secret.save(self.data)
         self.lock = asyncio.Lock()
         self.error = ''
         self.endpoint = ''
@@ -83,6 +86,7 @@ class PcAccount:
         return {'configured': self.configured, 'signedIn': bool(self.data.get('cookies')),
                 'email': self.data.get('email', ''), 'remote': bool(self.endpoint),
                 'remoteEnabled': self.data.get('remote_enabled', False),
+                'remoteEndpoint': self.endpoint,
                 'error': self.error, 'computerId': self.data.get('computer_id', '')}
 
     async def request(self, http, path, payload=None, token=''):
@@ -133,6 +137,7 @@ class PcAccount:
                 self.data.update(owner=owner, email=session['user'].get('email', email),
                                  computer_id=self.data.get('computer_id') or str(uuid.uuid4()),
                                  device_key=self.data.get('device_key') or secrets.token_hex(32))
+                self.data.setdefault('remote_enabled', True)
                 await self._refresh(http)
             except Exception:
                 self.data = previous

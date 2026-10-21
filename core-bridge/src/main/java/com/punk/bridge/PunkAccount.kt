@@ -116,6 +116,11 @@ object PunkAccount {
         }
     }
     suspend fun computers(ctx:Context):JsonArray=withContext(Dispatchers.IO) { mutex.withLock { api(ctx,"/computers").jsonArray } }
+    suspend fun reconnectTarget(ctx:Context,current:BridgeConfig):String {
+        if(current.accountComputerId.isNotEmpty())return current.accountComputerId
+        if(email(ctx).isEmpty())return ""
+        return ConnectionRoutes.accountTarget(current,computers(ctx))
+    }
     suspend fun connect(ctx:Context,id:String):BridgeConfig=withContext(Dispatchers.IO) { mutex.withLock {
         val computer=api(ctx,"/computers").jsonArray.map { it.jsonObject }.firstOrNull { it["id"]?.jsonPrimitive?.content==id }
             ?: error("Computador não encontrado nesta conta")
@@ -123,14 +128,8 @@ object PunkAccount {
         val remote=computer.getValue("endpoint").jsonPrimitive.content
         val base=BridgeConfig(host=local,port=computer.getValue("local_port").jsonPrimitive.int,useTls=true,
             certificateFingerprint=computer.getValue("fingerprint").jsonPrimitive.content,accountComputerId=id)
-        val candidates=buildList {
-            if(local.isNotBlank())add(base)
-            if(remote.isNotBlank()) {
-                val url=remote.toHttpUrl()
-                require(url.encodedPath=="/" && url.username.isEmpty() && url.password.isEmpty()) { "Rota externa inválida" }
-                add(base.copy(host=url.host,port=url.port,certificateFingerprint="",trustMode="cloudflare"))
-            }
-        }
+        val candidates=ConnectionRoutes.ordered(base,remote)
+        val failures=mutableListOf<String>()
         for(route in candidates) {
             val ticket=api(ctx,"/rpc/punk_create_connect_grant",buildJsonObject { put("p_computer_id",id);put("p_installation_id",installation(ctx)) }).jsonPrimitive.content
             val connected=runCatching { BridgeHttp.client(route).newBuilder().callTimeout(if(route.trustMode=="cloudflare")20 else 4,TimeUnit.SECONDS).build().useClient { client ->
@@ -140,14 +139,14 @@ object PunkAccount {
                 if(previous.token.isNotEmpty() && (previous.accountComputerId==id || previous.certificateFingerprint==base.certificateFingerprint))
                     request.header("Authorization","Bearer "+previous.token)
                 client.newCall(request.build()).execute().use { res ->
-                    require(res.isSuccessful) { "Acesso recusado pelo PC" }
+                    require(res.isSuccessful) { "Acesso recusado pelo PC (HTTP ${res.code})" }
                     val result=json.parseToJsonElement(res.body!!.string()).jsonObject
                     route.copy(token=result.getValue("token").jsonPrimitive.content,deviceId=result.getValue("deviceId").jsonPrimitive.content)
                 }
-            } }.getOrNull()
+            } }.onFailure { failures.add(ConnectionRoutes.label(route)+": "+ConnectionRoutes.failure(it)) }.getOrNull()
             if(connected!=null) { currentCoroutineContext().ensureActive();BridgePrefs.save(ctx,connected);return@withLock connected }
         }
-        error("PC indisponível. Abra o Punk Desktop e ative o acesso externo para usar fora do Wi-Fi.")
+        error(if(remote.isBlank())"O PC não publicou uma rota externa. Aguarde o túnel no Desktop e tente novamente." else "Não foi possível conectar. "+failures.joinToString("; "))
     } }
     suspend fun logout(ctx:Context):Unit=withContext(Dispatchers.IO) { mutex.withLock {
         val old=session(ctx)
